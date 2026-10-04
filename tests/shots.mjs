@@ -125,7 +125,7 @@ if (['all', 'views'].includes(only)) {
   await p.click('#tabs [data-tab="learn"]');
   await wait(p, 800);
   await p.screenshot({ path: `${out}/10-learn.png` });
-  check(await p.locator('#learnView svg.chart circle').count() >= 19, 'learn chart plots repeated Yom Kippur prayers');
+  check(await p.locator('#learnView svg.chart circle').count() === 17, 'learn chart plots all 17 repeated Yom Kippur occurrences');
   await p.click('#learnView [data-i="3"]');
   check(await p.locator('#learnView table.data tr').count() > 10, 'sources table lists editions and licenses');
   await p.close();
