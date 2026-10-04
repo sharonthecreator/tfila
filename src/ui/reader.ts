@@ -5,6 +5,9 @@ import { loadText } from '../data';
 import { escapeHtml, fmt, normalize, stripVowelsKeepTags } from '../hebrew';
 import { $, emit } from './dom';
 
+/** A gentle reminder, as printed siddurim carry: the texts contain holy names. */
+const HOLY_NOTE = '<p class="holy-note">הטקסטים כוללים שמות קודש. אם תדפיסו אותם — נא לנהוג בדפים בכבוד ולגנוז אותם.</p>';
+
 interface Current { nodeId: string; stopIndex: number | null; override: { nusach?: NusachId; gen?: boolean } | null }
 let current: Current | null = null;
 let token = 0;
@@ -67,7 +70,7 @@ async function textArea(node: PrayerNode, rec: TextRecord, nusach: NusachId, sto
   if (ov?.nusach && ov.nusach !== state.nusach) {
     if (!rec.id) return `<div class="notice warn">גם בנוסח ${nsName} הטקסט אינו זמין.</div>`;
     const p = await loadText(rec.id);
-    return `<div class="notice">מוצג כאן <b>נוסח ${nsName}</b> לבקשתכם — לא נוסח ${escapeHtml(nusachById(state.nusach).short)}.</div>${sourceCards(p, 'מלא')}<div class="prayer" id="prayerBody">${segments(p)}</div>`;
+    return `<div class="notice">מוצג כאן <b>נוסח ${nsName}</b> לבקשתכם — לא נוסח ${escapeHtml(nusachById(state.nusach).short)}.</div>${sourceCards(p, 'מלא')}<div class="prayer" id="prayerBody">${segments(p)}</div>${HOLY_NOTE}`;
   }
   if (rec.status === 'unavailable' || rec.status === 'lens-only') {
     const alts = (['em', 'ash', 'sef', 'chabad'] as NusachId[])
@@ -94,7 +97,7 @@ async function textArea(node: PrayerNode, rec: TextRecord, nusach: NusachId, sto
     extra = `<div class="sec-title">${escapeHtml(rec.extra.label)}</div>${sourceCards(ep, 'גרסה נוספת')}<div class="prayer">${segments(ep)}</div>`;
   }
   const occ = rec.fromStop ? '<div class="notice">הטקסט של <b>מופע זה</b> במסלול (לא בהכרח של שאר המופעים).</div>' : '';
-  return `${banner}${occ}${sourceCards(p, label)}<div class="prayer" id="prayerBody">${segments(p)}</div>${kav}${extra}`;
+  return `${banner}${occ}${sourceCards(p, label)}<div class="prayer" id="prayerBody">${segments(p)}</div>${kav}${extra}${HOLY_NOTE}`;
 }
 
 async function render(): Promise<void> {

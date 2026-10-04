@@ -132,14 +132,15 @@ export const NODES = [
   },
   {
     id: 'kaddish', region: 'shacharit', title: 'קדיש', k: 'core', imp: 3,
-    d: 'תפילה בארמית על קידוש שם שמיים — ״יתגדל ויתקדש שמיה רבא״ — הנאמרת רק בעשרה. יש חצי קדיש, קדיש שלם (״תתקבל״), קדיש יתום וקדיש דרבנן, והוא מפריד בין חלקי התפילה.',
+    d: 'תפילה בארמית על קידוש שם שמיים — ״יתגדל ויתקדש שמיה רבא״ — הנאמרת רק בעשרה. הקדיש הוא ה״חוליה״ שמחברת ומפרידה בין חלקי התפילה, ויש לו ארבע צורות: חצי קדיש (סוגר יחידה ופותח את הבאה — אחר פסוקי דזמרה, לפני עמידה, אחר קריאת התורה), קדיש תתקבל או ״שלם״ (חותם את יחידת העמידה), קדיש יתום (״יהא שלמא״, אחר מזמורים ו״עלינו״) וקדיש דרבנן (״על ישראל״, אחר לימוד תורה). בכל מסלול מוצגת הצורה הנאמרת באותה נקודה, מתוך המהדורה עצמה.',
     w: 'פעמים רבות בכל תפילה בציבור; קדיש יתום — על ידי אבלים.',
     v: 'בעדות המזרח נוהגים שכל האבלים אומרים קדיש יחד; גם הנוסח (״ויצמח פורקניה ויקרב משיחיה״) מצוי בעדות המזרח, בנוסח ספרד ובחב״ד ולא באשכנז.',
     t: {
-      em: R('em', 'Weekday Shacharit/Song of the Day', { start: 'יתגדל', count: 1 }),
-      ash: R('ash', "Kaddish/Mourner's Kaddish"),
-      sef: R('sef', 'Weekday Shacharit/Aleinu', { start: 'יתגדל', count: 1 }),
-      chabad: R('chabad', "Shacharit/Mourner's Kaddish"),
+      // the full Kaddish (״קדיש שלם / תתקבל״); every route stop carries the exact form said at that point
+      em: R('em', 'Weekday Shacharit/Uva LeSion', { from: 3, count: 5 }),
+      ash: R('ash', 'Kaddish/Kaddish Shalem'),
+      sef: R('sef', 'Weekday Shacharit/Ashrei', { version: 'The Metsudah siddur, 1981', from: 17, count: 6 }),
+      chabad: R('chabad', 'Shacharit/Ashrei Uva LeZion', { from: 4, count: 5 }),
     },
     kav: R('shaarKavanot', 'Sermons on Kaddish', { count: 4 }),
   },
@@ -1401,7 +1402,8 @@ export const NODES = [
     t: {
       ash: [R('ash', "Kaddish/Mourner's Kaddish"), R('ash', 'Kaddish/Kaddish achar HaKevura')],
       chabad: R('chabad', "Shacharit/Mourner's Kaddish"),
-      em: R('em', 'Weekday Shacharit/Song of the Day', { start: 'יתגדל', count: 1 }),
+      em: R('em', 'Weekday Shacharit/Song of the Day', { from: 27, count: 3 }),
+      sef: R('sef', "Weekday Shacharit/L'David Hashem", { version: 'The Metsudah siddur, 1981', from: 8, count: 5 }),
     },
     rel: [['varies', 'kaddish', 'אחת מצורות הקדיש']],
   },

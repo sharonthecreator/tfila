@@ -1,11 +1,13 @@
-// tfila application: wires the instrument (PrayerWorld) to the lab UI, routes, reader and views.
+// tfila application: wires the instrument (the prayer ladder) to the lab UI, routes, reader and views.
+// Navigation is layered — the ladder › a route › a stop (or the ladder › a prayer) — and every layer change
+// is a browser history entry, so the browser's / phone's Back button and the on-screen "חזרה" both step up.
 import { state, set, subscribe, nodeById, routeById, nusachById, regionById, currentRoute, KIND_HE, STATUS_HE, type Quality, type Tab } from './state';
 import type { NusachId } from './types';
 import { loadWorld, loadPreview } from './data';
 import { escapeHtml } from './hebrew';
 import { $, on, emit, announce } from './ui/dom';
 import { openReader, closeReader, rerenderReader, isReaderOpen } from './ui/reader';
-import { renderExplain, renderReadouts, renderDock, renderLive, setLivePreviews } from './ui/lab';
+import { renderExplain, renderReadouts, renderDock, renderLive, renderCrumbs, setLivePreviews } from './ui/lab';
 import { bindSearch, run as runSearch } from './ui/search';
 import { renderLibrary, renderCompare, renderLearn, renderHelp } from './ui/views';
 import type { PrayerWorld } from './scene/PrayerWorld';
@@ -32,7 +34,7 @@ export async function boot(): Promise<void> {
         world3d = new mod.PrayerWorld($('gl') as HTMLCanvasElement, $('labels'), resolvePreset(state.quality).preset, {
           onSelect: (id) => selectNode(id),
           onHover: tooltip,
-          onBackground: () => { if (!state.routeId && state.nodeId) { set({ nodeId: null }); world3d?.setSelected(null); } },
+          onBackground: () => { if (!state.routeId && state.nodeId) { set({ nodeId: null }); world3d?.setSelected(null); renderAll(); } },
           onKeyNav: (id) => { if (id) announce(`במרכז: ${nodeById(id).title}`); },
         });
         world3d.setWorld(state.world);
@@ -62,7 +64,9 @@ export async function boot(): Promise<void> {
 
     if (state.routeId) activateRoute(state.routeId, { keepStop: true });
     else if (state.nodeId) selectNode(state.nodeId);
-    else if (world3d) void world3d.flyTo(16, 20, 4.6, { duration: 2800 });
+    else if (world3d) void world3d.flyHome({ duration: 2800 });
+    history.replaceState({ tfila: true, level: levelKey() }, '', '#' + hashParams());
+    lastLevel = levelKey();
 
     $('loader').classList.add('done');
   } catch (e) {
@@ -88,28 +92,107 @@ function readPrefs(): void {
 function savePrefs(): void {
   try { localStorage.setItem('tfila.prefs', JSON.stringify({ nusach: state.nusach, reduceMotion: state.reduceMotion, quality: state.quality })); } catch { /* ignore */ }
 }
-function readHash(): void {
+interface NavTarget { nusach: NusachId | null; route: string | null; stop: number; node: string | null; tab: Tab }
+function parseHash(): NavTarget {
   const p = new URLSearchParams(location.hash.slice(1));
   const n = p.get('n') as NusachId | null;
-  if (n && state.world.nusachim.some((x) => x.id === n)) state.nusach = n;
-  if (p.get('route') && state.world.routeMap.has(p.get('route')!)) state.routeId = p.get('route');
-  if (p.get('stop')) state.stopIndex = Number(p.get('stop')) - 1;
-  if (p.get('node') && state.world.nodeMap.has(p.get('node')!)) state.nodeId = p.get('node');
+  const route = p.get('route');
+  const node = p.get('node');
   const tab = p.get('tab') as Tab | null;
-  if (tab && ['world', 'library', 'compare', 'learn'].includes(tab)) state.tab = tab;
+  return {
+    nusach: n && state.world.nusachim.some((x) => x.id === n) ? n : null,
+    route: route && state.world.routeMap.has(route) ? route : null,
+    stop: p.get('stop') ? Number(p.get('stop')) - 1 : -1,
+    node: node && state.world.nodeMap.has(node) ? node : null,
+    tab: tab && ['world', 'library', 'compare', 'learn'].includes(tab) ? tab : 'world',
+  };
 }
-function writeHash(): void {
+function readHash(): void {
+  const t = parseHash();
+  if (t.nusach) state.nusach = t.nusach;
+  if (t.route) { state.routeId = t.route; state.stopIndex = t.stop; }
+  else if (t.node) state.nodeId = t.node;
+  state.tab = t.tab;
+}
+function hashParams(): string {
   const p = new URLSearchParams();
   p.set('n', state.nusach);
   if (state.tab !== 'world') p.set('tab', state.tab);
   if (state.routeId) p.set('route', state.routeId);
   if (state.routeId && state.stopIndex >= 0) p.set('stop', String(state.stopIndex + 1));
   else if (state.nodeId) p.set('node', state.nodeId);
-  history.replaceState(null, '', '#' + p.toString());
+  return p.toString();
+}
+/** The navigation layer: changing it adds a history entry; moving between stops of a route replaces it. */
+const levelKey = () => [state.tab, state.routeId || '', state.routeId ? '' : state.nodeId || ''].join('|');
+let lastLevel = '';
+let fromHistory = false;
+let hashQueued = false;
+function writeHash(): void {
+  if (hashQueued) return;
+  hashQueued = true;
+  queueMicrotask(() => {
+    hashQueued = false;
+    const hash = '#' + hashParams();
+    const level = levelKey();
+    if (level !== lastLevel && !fromHistory && state.world) history.pushState({ tfila: true, level, prev: lastLevel }, '', hash);
+    else history.replaceState({ ...(history.state || {}), tfila: true, level }, '', hash);
+    lastLevel = level;
+  });
+}
+
+/** Browser / phone Back and Forward: re-apply the layer that the URL describes. */
+function applyHistory(): void {
+  const t = parseHash();
+  fromHistory = true;
+  closeReader();
+  stopJourney();
+  if (t.nusach && t.nusach !== state.nusach) set({ nusach: t.nusach });
+  if (t.tab !== state.tab) set({ tab: t.tab });
+  if (t.route) {
+    if (state.routeId !== t.route) { state.stopIndex = t.stop; activateRoute(t.route, { keepStop: true }); }
+    else if (t.stop !== state.stopIndex) {
+      if (t.stop >= 0) void selectStop(t.stop);
+      else { set({ stopIndex: -1, nodeId: null }); world3d?.setStop(-1); void world3d?.overview(); renderAll(); }
+    }
+  } else {
+    if (state.routeId) exitRoute(!t.node);
+    if (t.node && t.node !== state.nodeId) selectNode(t.node);
+    else if (!t.node && state.nodeId) clearNode();
+  }
+  queueMicrotask(() => queueMicrotask(() => { fromHistory = false; }));
+}
+
+/** One layer up: stop → route overview → the whole ladder; prayer → the whole ladder. */
+function goUp(): void {
+  stopJourney();
+  if (state.routeId && state.stopIndex >= 0) {
+    set({ stopIndex: -1, nodeId: null });
+    world3d?.setStop(-1);
+    void world3d?.overview();
+    renderAll();
+    announce(`מבט על המסלול ${currentRoute()!.title}`);
+    return;
+  }
+  if (!state.routeId && !state.nodeId) return;
+  // if the previous history entry is the layer above, really go back, so Back/Forward stay in step
+  const parent = [state.tab, '', ''].join('|');
+  if (history.state?.tfila && history.state.prev === parent) { history.back(); return; }
+  if (state.routeId) exitRoute();
+  else clearNode();
+}
+
+function clearNode(): void {
+  set({ nodeId: null });
+  world3d?.setSelected(null);
+  void world3d?.flyHome();
+  renderAll();
+  announce('חזרה לסולם התפילות');
 }
 
 // ───────────────────────────── rendering ─────────────────────────────
 function renderAll(): void {
+  renderCrumbs();
   renderExplain();
   renderReadouts();
   renderDock();
@@ -181,7 +264,7 @@ function selectNode(id: string): void {
   stopJourney();
   set({ nodeId: id });
   world3d?.setSelected(id);
-  void world3d?.flyToNode(id, 0.3);
+  void world3d?.flyToNode(id);
   renderAll();
   announce(`נבחר: ${n.title}`);
 }
@@ -202,10 +285,13 @@ function activateRoute(id: string, { keepStop = false } = {}): void {
 
 function exitRoute(fly = true): void {
   stopJourney();
-  set({ routeId: null, stopIndex: -1 });
+  const title = currentRoute()?.title;
+  set({ routeId: null, stopIndex: -1, nodeId: null });
   world3d?.setRoute(null, state.nusach);
-  if (fly && world3d) void world3d.flyTo(world3d.focusLL.lat, world3d.focusLL.lon, 4.0);
+  world3d?.setSelected(null);
+  if (fly) void world3d?.flyHome();
   renderAll();
+  if (title) announce(`יצאתם מהמסלול ${title}. חזרה לסולם התפילות`);
 }
 
 function selectStop(i: number): Promise<void> {
@@ -217,7 +303,7 @@ function selectStop(i: number): Promise<void> {
   renderAll();
   if (isReaderOpen()) void openReader(route.stops[i].n, { stopIndex: i });
   announce(`תחנה ${i + 1} מתוך ${route.stops.length}: ${nodeById(route.stops[i].n).title}`);
-  return world3d ? world3d.flyToNode(route.stops[i].n, 0.34) : Promise.resolve();
+  return world3d ? world3d.flyToNode(route.stops[i].n) : Promise.resolve();
 }
 
 function read(): void {
@@ -263,7 +349,7 @@ function updateInsets(): void {
   if (!world3d) return;
   const mobile = innerWidth <= 760;
   const ex = $('explain'), ro = $('readouts'), dock = $('dock');
-  if (mobile) world3d.setInsets({ top: 110, bottom: dock.offsetHeight + ex.offsetHeight + 24 });
+  if (mobile) world3d.setInsets({ top: $('crumbs').hidden ? 110 : 196, bottom: dock.offsetHeight + ex.offsetHeight + 24 });
   else world3d.setInsets({
     top: 70,
     right: ex.offsetWidth + 30,
@@ -279,11 +365,13 @@ function bindUi(): void {
   on('route', (id) => activateRoute(id as string));
   on('route-from-view', (id) => activateRoute(id as string));
   on('exit-route', () => exitRoute());
-  on('region', (id) => { const r = regionById(id as string); void world3d?.flyTo(r.lat - 4, r.lon, 1.05); });
+  on('up', goUp);
+  on('home', () => { if (state.routeId) exitRoute(); else if (state.nodeId) clearNode(); else void world3d?.flyHome(); });
+  on('region', (id) => void world3d?.flyToRegion(id as string));
   on('read', read);
   on('journey', () => (state.journey ? stopJourney() : startJourney()));
   on('overview', () => { stopJourney(); void world3d?.overview(); });
-  on('focus', () => { const r = currentRoute(); if (r && state.stopIndex >= 0) void world3d?.flyToNode(r.stops[state.stopIndex].n, 0.3); });
+  on('focus', () => { const r = currentRoute(); if (r && state.stopIndex >= 0) void world3d?.flyToNode(r.stops[state.stopIndex].n); });
   on('nusach', (ns) => set({ nusach: ns as NusachId }));
   on('relview', (v) => set({ relView: v as boolean }));
   on('library', () => set({ tab: 'library' }));
@@ -303,7 +391,7 @@ function bindUi(): void {
     selectNode(id as string);
     void openReader(id as string, state.routeId ? { stopIndex: state.stopIndex } : {});
   });
-  on('reader-closed', () => { /* keep selection; the globe stays focused on it */ });
+  on('reader-closed', () => { /* keep selection; the ladder stays focused on it */ });
 
   $('tabs').querySelectorAll<HTMLElement>('button').forEach((b) => (b.onclick = () => set({ tab: b.dataset.tab as Tab })));
   $('quality').querySelectorAll<HTMLElement>('button').forEach((b) => (b.onclick = () => set({ quality: b.dataset.q as Quality })));
@@ -327,15 +415,16 @@ function bindUi(): void {
       if (isReaderOpen()) return closeReader();
       if (state.tab !== 'world') return set({ tab: 'world' });
       if (state.journey) return stopJourney();
-      if (state.routeId) return exitRoute();
-      if (state.nodeId) { set({ nodeId: null }); world3d?.setSelected(null); renderAll(); }
+      if (state.routeId || state.nodeId) return goUp();
     }
     if (!typing && state.routeId && state.tab === 'world' && !isReaderOpen() && (e.key === 'n' || e.key === 'p')) {
       stopJourney();
       void selectStop(state.stopIndex + (e.key === 'n' ? 1 : -1));
     }
   });
+  addEventListener('popstate', () => { if (state.world) applyHistory(); });
   addEventListener('resize', () => { world3d?.measureLabels(); updateInsets(); });
   document.fonts?.ready?.then(() => world3d?.measureLabels());
-  new ResizeObserver(updateInsets).observe($('explain'));
+  const ro = new ResizeObserver(updateInsets);
+  for (const id of ['explain', 'dock', 'readouts']) ro.observe($(id));
 }

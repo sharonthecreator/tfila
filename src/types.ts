@@ -3,6 +3,7 @@
 export type NusachId = 'em' | 'ash' | 'sef' | 'chabad' | 'baladi' | 'shami' | 'kabbalah';
 export type Kind = 'core' | 'conditional' | 'custom' | 'optional';
 export type TextStatus = 'full' | 'excerpt' | 'lens' | 'lens-only' | 'historical' | 'unavailable' | 'generic';
+export type WorldId = 'asiyah' | 'yetzirah' | 'beriah' | 'atzilut';
 export type RelType = 'contains' | 'adds' | 'varies' | 'related';
 
 export interface TextSummary {
@@ -10,6 +11,8 @@ export interface TextSummary {
   words: number;
   excerpt: boolean;
   src: string;
+  /** direct link to the passage at its source (Sefaria) */
+  url?: string;
 }
 
 export interface TextRecord extends Partial<TextSummary> {
@@ -36,8 +39,14 @@ export interface PrayerNode {
   w: string;
   v: string | null;
   tags: string[];
-  lat: number;
-  lon: number;
+  /** world of the ladder (bottom → top: asiyah, yetzirah, beriah, atzilut) */
+  world: WorldId;
+  /** 'ari' = placed by the Ari's division of Shacharit; 'tfila' = this project's structural placement */
+  wsrc: 'ari' | 'tfila';
+  /** cylindrical position on the ladder: angle (deg, 0 = +Z), radius, height */
+  a: number;
+  r: number;
+  y: number;
   texts: Record<NusachId, TextRecord>;
   gen: TextSummary | null;
   explanationOnly: boolean;
@@ -68,9 +77,18 @@ export interface Route {
 export interface Region {
   id: string;
   name: string;
-  lat: number;
-  lon: number;
+  /** centre angle of the region's sector (deg) */
+  a: number;
   color: string;
+}
+
+export interface LadderWorld {
+  id: WorldId;
+  he: string;
+  en: string;
+  color: string;
+  ari: string;
+  rule: string;
 }
 
 export interface Nusach {
@@ -90,10 +108,13 @@ export interface World {
   nodes: PrayerNode[];
   routes: Route[];
   books: Record<string, { title: string; heTitle: string }>;
+  worlds: LadderWorld[];
+  ladder: { turnH: number; rIn: number; rOut: number; base: number; turns: number; sources: { worlds: TextSummary; descent: TextSummary } };
   editions: { bookHe: string; book: string; version: string; versionHe: string | null; license: string; licenseHe: string; source: string | null; excerpts: number }[];
   nodeMap: Map<string, PrayerNode>;
   routeMap: Map<string, Route>;
   regionMap: Map<string, Region>;
+  worldMap: Map<WorldId, LadderWorld>;
 }
 
 export interface TextPart {

@@ -414,3 +414,49 @@ body.reduce-motion *, body.reduce-motion *::before, body.reduce-motion *::after 
   .view-main { padding: 16px; }
   .cmp { grid-template-columns: 1fr; }
 }
+
+/* ───────────── breadcrumbs: where am I, and the way back ───────────── */
+.crumbs {
+  position: fixed; top: 74px; left: 50%; transform: translateX(-50%); z-index: 28; display: flex; align-items: center; gap: 6px;
+  padding: 4px; border-radius: 14px; max-width: min(760px, calc(100vw - 24px));
+}
+.crumbs .back {
+  appearance: none; display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 10px; border: 1px solid rgba(95,224,255,.45);
+  background: rgba(95,224,255,.12); color: var(--accent-2); font-size: 13px; font-weight: 650; white-space: nowrap;
+}
+.crumbs .back:hover { background: rgba(95,224,255,.2); }
+.crumbs ol { display: flex; align-items: center; gap: 2px; list-style: none; margin: 0; padding: 0 4px; min-width: 0; overflow: hidden; }
+.crumbs li { display: flex; align-items: center; min-width: 0; }
+.crumbs li + li::before { content: '‹'; color: var(--faint); margin: 0 6px; }
+.crumbs .crumb { appearance: none; border: 0; background: none; padding: 4px 4px; font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px; }
+.crumbs button.crumb:hover { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
+.crumbs .crumb.cur { color: var(--text); font-weight: 600; }
+.crumbs .crumb .mono { font-size: 11.5px; color: var(--accent-2); }
+.crumbs .exit { appearance: none; width: 30px; height: 30px; border-radius: 9px; border: 1px solid var(--stroke); background: rgba(255,255,255,.04); color: var(--muted); flex: none; }
+.crumbs .exit:hover { color: var(--text); border-color: var(--stroke-strong); }
+
+/* ───────────── ladder labels ───────────── */
+.label.world {
+  display: flex; flex-direction: column; align-items: center; gap: 1px; background: transparent; border: 0; backdrop-filter: none; padding: 0;
+  color: var(--wc); text-shadow: 0 1px 10px #000;
+}
+.label.world .n { font-family: var(--mono); font-size: 10px; letter-spacing: .2em; opacity: .8; }
+.label.world .he { font-size: 17px; font-weight: 700; letter-spacing: .06em; }
+.label.world .en { font-family: var(--mono); font-size: 9.5px; letter-spacing: .3em; color: var(--muted); }
+.label.caption { background: transparent; border: 0; backdrop-filter: none; font-family: var(--serif); font-size: 18px; color: #f4ecd8; text-shadow: 0 0 18px rgba(255,230,180,.45), 0 1px 8px #000; flex-direction: column; gap: 2px; }
+.label.caption .v { font-family: var(--sans); font-size: 10.5px; letter-spacing: .12em; }
+.climb { margin: 12px 0 4px; }
+.climb figcaption { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
+.climb figcaption .mono { font-size: 11.5px; color: var(--accent-2); }
+.climb svg { width: 100%; height: 74px; display: block; }
+.climb svg text { font-family: var(--sans); font-size: 9.5px; }
+.src-link a { color: var(--accent-2); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: rgba(159,240,255,.35); }
+.card-wrap { position: relative; display: grid; }
+.card-src { position: absolute; top: 12px; left: 12px; font-size: 11px; color: var(--accent-2); padding: 2px 6px; border-radius: 6px; border: 1px solid rgba(95,224,255,.25); background: rgba(6,20,28,.6); }
+.card-src:hover { background: rgba(95,224,255,.15); }
+.prov-line { margin-top: 8px; font-size: 12px; color: var(--muted); }
+.holy-note { margin-top: 18px; font-size: 11.5px; color: var(--faint); text-align: center; }
+@media (max-width: 760px) {
+  .crumbs { top: 150px; left: 12px; right: 12px; transform: none; max-width: none; }
+  .crumbs .crumb { max-width: 140px; }
+}

@@ -22,6 +22,7 @@ export async function loadWorld(): Promise<World> {
   w.nodeMap = new Map(w.nodes.map((n) => [n.id, n]));
   w.routeMap = new Map(w.routes.map((r) => [r.id, r]));
   w.regionMap = new Map(w.regions.map((r) => [r.id, r]));
+  w.worldMap = new Map(w.worlds.map((x) => [x.id, x]));
   return w;
 }
 

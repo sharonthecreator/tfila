@@ -1,4 +1,4 @@
-// Canvas-generated textures: the word skin of the globe, prayer medallions, the dial ring,
+// Canvas-generated textures: the word pillar inside the ladder, prayer medallions, the dial ring,
 // and the perforated breadboard the instrument stands on.
 import * as THREE from 'three';
 import type { World } from '../types';
@@ -19,64 +19,55 @@ const rgb = (hex: string) => {
   return `${Math.round(c.r * 255)},${Math.round(c.g * 255)},${Math.round(c.b * 255)}`;
 };
 
-/** Equirectangular skin: faint rows of real prayer words, denser around each prayer, region light. */
-export function makeDustTexture(world: World, previews: Record<string, string>, width = 4096): THREE.CanvasTexture {
-  const W = width, H = width / 2;
+/**
+ * The pillar inside the ladder: rows of real prayer words wrapped around a cylinder. At every angle and height the
+ * words come from the prayers standing on the nearest rung there (same region sector, same world), brightest right
+ * behind the rungs — so the text spirals up with the ladder.
+ */
+export function makePillarTexture(
+  world: World, previews: Record<string, string>, geo: { bottom: number; top: number; radius: number }, width = 2048,
+): THREE.CanvasTexture {
+  const { turnH, base, turns } = world.ladder;
+  const W = width;
+  const H = Math.round((W * (geo.top - geo.bottom)) / (2 * Math.PI * geo.radius));
   const [c, ctx] = canvas(W, H);
-  const toXY = (lat: number, lon: number): [number, number] => [((lon + 180) / 360) * W, ((90 - lat) / 180) * H];
-
-  for (const r of world.regions) {
-    const [x, y] = toXY(r.lat, r.lon);
-    const rad = W * 0.045;
-    for (const dx of [-W, 0, W]) {
-      const g = ctx.createRadialGradient(x + dx, y, 0, x + dx, y, rad);
-      g.addColorStop(0, `rgba(${rgb(r.color)},0.11)`);
-      g.addColorStop(0.55, `rgba(${rgb(r.color)},0.03)`);
-      g.addColorStop(1, `rgba(${rgb(r.color)},0)`);
-      ctx.fillStyle = g;
-      ctx.fillRect(x + dx - rad, y - rad, rad * 2, rad * 2);
-    }
+  const sectorOf = new Map(world.regions.map((r) => [Math.floor(r.a / 30), r]));
+  const worldIds = world.worlds.map((w) => w.id);
+  const pools = new Map<string, string[]>();
+  for (const n of world.nodes) {
+    const key = `${Math.floor(n.a / 30)}|${worldIds.indexOf(n.world)}`;
+    const list = pools.get(key) || [];
+    list.push(...(previews[n.id] || n.title).split(' ').slice(0, 60));
+    pools.set(key, list);
   }
-
-  const pool: string[] = [];
-  for (const n of world.nodes) pool.push(...(previews[n.id] || n.title).split(' ').slice(0, 40));
-
-  const fs = Math.round(W / 300);
+  const all = world.nodes.flatMap((n) => (previews[n.id] || n.title).split(' ').slice(0, 12));
+  const fs = Math.max(9, Math.round(W / 150));
   ctx.font = `${fs}px ${SERIF}`;
   ctx.direction = 'rtl';
   ctx.textAlign = 'right';
   ctx.textBaseline = 'middle';
+  const cursor = new Map<string, number>();
   let k = 0;
-  for (let y = fs; y < H; y += fs * 1.7) {
-    const lat = 90 - (y / H) * 180;
-    const polar = Math.max(0, Math.min(1, (78 - Math.abs(lat)) / 18));
-    if (polar <= 0) continue;
-    let x = W - ((y * 7.3) % (fs * 6));
+  for (let py = fs; py < H; py += fs * 1.55) {
+    const y = geo.top - (py / H) * (geo.top - geo.bottom);
+    let x = W - ((py * 5.3) % (fs * 5));
     while (x > 0) {
-      const w = pool[k++ % pool.length];
-      ctx.fillStyle = `rgba(170, 215, 255, ${(0.032 + 0.022 * Math.sin(k * 1.7)) * polar})`;
-      ctx.fillText(w, x, y);
-      x -= ctx.measureText(w).width + fs * 0.55;
-    }
-  }
-
-  const nfs = Math.round(W / 210);
-  ctx.font = `${nfs}px ${SERIF}`;
-  for (const n of world.nodes) {
-    const words = (previews[n.id] || n.title).split(' ');
-    const [cx, cy] = toXY(n.lat, n.lon);
-    const col = rgb(world.regionMap.get(n.region)!.color);
-    const rad = (W / 360) * 2.3;
-    let wi = 0;
-    for (let dy = -rad; dy <= rad && wi < words.length; dy += nfs * 1.25) {
-      const half = Math.sqrt(Math.max(0, rad * rad - dy * dy)) / Math.sqrt(Math.max(0.2, Math.cos((n.lat * Math.PI) / 180)));
-      let x = cx + half;
-      while (x > cx - half && wi < words.length) {
-        const w = words[wi++];
-        ctx.fillStyle = `rgba(${col}, ${0.2 - (Math.abs(dy) / rad) * 0.13})`;
-        ctx.fillText(w, x, cy + dy);
-        x -= ctx.measureText(w).width + nfs * 0.5;
-      }
+      const a = (x / W) * 360;
+      const u = (y - base) / turnH - a / 360;
+      const w = Math.round(u);
+      const near = Math.max(0, 1 - Math.abs(u - w) * 2);
+      const inside = w >= 0 && w < turns;
+      const sector = Math.floor(a / 30);
+      const key = `${sector}|${w}`;
+      const pool = (inside && pools.get(key)) || all;
+      const i = cursor.get(key) || 0;
+      cursor.set(key, i + 1);
+      const word = pool[i % pool.length];
+      const col = inside ? rgb(sectorOf.get(sector)?.color || '#9fd8ff') : '150,190,230';
+      const alpha = inside ? 0.035 + 0.15 * near * near : 0.025;
+      ctx.fillStyle = `rgba(${col}, ${(alpha * (0.85 + 0.15 * Math.sin(k++ * 1.7))).toFixed(3)})`;
+      ctx.fillText(word, x, py);
+      x -= ctx.measureText(word).width + fs * 0.5;
     }
   }
   const tex = new THREE.CanvasTexture(c);
@@ -167,7 +158,7 @@ export function makeMedallion(title: string, meta: string, words: string, color:
   return c;
 }
 
-/** The graduated dial ring around the globe: degree ticks and the 22 letters. */
+/** The graduated dial ring on the bench around the ladder's foot: degree ticks and numerals only. */
 export function makeDialTexture(size = 2048): THREE.CanvasTexture {
   const [c, ctx] = canvas(size, size);
   const cx = size / 2, cy = size / 2;
@@ -186,20 +177,7 @@ export function makeDialTexture(size = 2048): THREE.CanvasTexture {
     ctx.lineTo(cx + Math.cos(a) * rB, cy + Math.sin(a) * rB);
     ctx.stroke();
   }
-  const letters = 'אבגדהוזחטיכלמנסעפצקרשת';
-  ctx.fillStyle = 'rgba(238,242,248,0.75)';
-  ctx.font = `600 ${Math.round(size * 0.022)}px ${SANS}`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  const rL = R0 + (R1 - R0) * 0.6;
-  [...letters].forEach((ch, i) => {
-    const a = (i / letters.length) * Math.PI * 2 - Math.PI / 2;
-    ctx.save();
-    ctx.translate(cx + Math.cos(a) * rL, cy + Math.sin(a) * rL);
-    ctx.rotate(a + Math.PI / 2);
-    ctx.fillText(ch, 0, 0);
-    ctx.restore();
-  });
+  // no Hebrew letters here: the dial lies on the bench, underfoot of the ladder
   ctx.fillStyle = 'rgba(154,166,184,0.6)';
   ctx.font = `500 ${Math.round(size * 0.011)}px ${MONO}`;
   for (let d = 0; d < 360; d += 30) {

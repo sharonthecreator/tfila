@@ -57,5 +57,46 @@ const yk = world.routes.find((r) => r.id === 'yom-kippur');
 const amidot = yk.stops.filter((s) => s.n === 'amidah-yk').length;
 if (amidot !== 5) errors.push(`yom kippur should repeat the amidah (found ${amidot})`);
 
+// Kaddish: every Kaddish stop must carry the form its note names, in every nusach that has a text for it
+const plainText = (id) => JSON.parse(readFileSync(D + 't/' + id + '.json')).parts.flatMap((p) => p.segments).join(' ').replace(/<[^>]+>/g, ' ').replace(/[\u0591-\u05C7]/g, '').replace(/\s+/g, ' ');
+const FORMS = [
+  [/חצי קדיש/, (t) => /דאמירן בעלמא/.test(t) && !/יהא שלמא|תתקבל|על ישראל ועל רבנן/.test(t), 'half'],
+  [/תתקבל/, (t) => /תתקבל/.test(t), 'titkabal'],
+  [/קדיש יתום/, (t) => /יהא שלמא/.test(t) && !/תתקבל|על ישראל ועל רבנן/.test(t), 'yatom'],
+  [/דרבנן|על ישראל/, (t) => /על ישראל ועל רבנן/.test(t), 'derabbanan'],
+];
+let kaddishStops = 0;
+for (const r of world.routes) r.stops.forEach((s, i) => {
+  if (s.n !== 'kaddish') return;
+  kaddishStops++;
+  if (!s.note) { errors.push(`route ${r.id}#${i}: Kaddish stop without its form`); return; }
+  const form = FORMS.find(([re]) => re.test(s.note.split('—')[0]));
+  if (!form) { errors.push(`route ${r.id}#${i}: Kaddish form not named in note`); return; }
+  for (const [ns, rec] of Object.entries(s.t || {})) {
+    if (!rec.id) continue;
+    const t = plainText(rec.id);
+    if (!/יתגדל/.test(t)) errors.push(`route ${r.id}#${i}/${ns}: text is not a Kaddish`);
+    else if (!form[1](t)) errors.push(`route ${r.id}#${i}/${ns}: text is not a ${form[2]} Kaddish`);
+  }
+});
+// every service route has its Kaddish
+for (const id of ['shacharit', 'mincha', 'arvit', 'yom-chol', 'shabbat', 'rosh-chodesh', 'rosh-hashana', 'yom-kippur']) {
+  if (!world.routes.find((r) => r.id === id)?.stops.some((s) => s.n === 'kaddish')) errors.push(`route ${id}: no Kaddish`);
+}
+
+// the ladder: every node stands in one of the four worlds; Ne'ilah on the topmost rung
+const WORLD_IDS = world.worlds.map((w) => w.id);
+for (const n of world.nodes) {
+  if (!WORLD_IDS.includes(n.world)) errors.push(`${n.id}: no world on the ladder`);
+  if (![n.a, n.r, n.y].every(Number.isFinite)) errors.push(`${n.id}: no ladder position`);
+}
+const summit = [...world.nodes].sort((a, b) => b.y - a.y)[0];
+if (summit.id !== 'neila') errors.push(`the topmost rung should be Ne'ilah (found ${summit.id})`);
+for (const id of ['amidah', 'shema', 'pesukei-dezimra', 'birchot-hashachar', 'tachanun']) {
+  const n = nodes.get(id);
+  const want = { amidah: 'atzilut', shema: 'beriah', 'pesukei-dezimra': 'yetzirah', 'birchot-hashachar': 'asiyah', tachanun: 'asiyah' }[id];
+  if (n.world !== want || n.wsrc !== 'ari') errors.push(`${id}: should be placed in ${want} by the Ari`);
+}
+
 if (errors.length) { console.error(errors.join('\n')); console.error(`\n${errors.length} problems`); process.exit(1); }
-console.log(`content ok: ${world.nodes.length} nodes, ${world.routes.length} routes, all texts attributed and correctly labelled`);
+console.log(`content ok: ${world.nodes.length} nodes, ${world.routes.length} routes, ${kaddishStops} Kaddish stops of the right form, all texts attributed and correctly labelled`);

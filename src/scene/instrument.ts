@@ -1,72 +1,60 @@
-// The physical instrument the globe sits in: a graduated dial ring on a four-legged cradle,
-// standing on a perforated optical breadboard.
+// The bench the ladder stands on ("מוצב ארצה"): a perforated optical breadboard, a turned pedestal
+// and a graduated dial ring lying on the bench around the ladder's foot.
 import * as THREE from 'three';
 import { makeBreadboard, makeDialTexture } from './textures';
 
 export const TABLE_Y = -1.58;
 
-export function createInstrument(): THREE.Group {
+export function createBase(): THREE.Group {
   const g = new THREE.Group();
-  g.name = 'instrument';
+  g.name = 'base';
 
   const anodized = new THREE.MeshPhysicalMaterial({ color: '#15181e', metalness: 0.7, roughness: 0.36, clearcoat: 0.4, clearcoatRoughness: 0.35 });
   const satin = new THREE.MeshPhysicalMaterial({ color: '#9aa0a8', metalness: 1, roughness: 0.3 });
   const polished = new THREE.MeshPhysicalMaterial({ color: '#dfe3e8', metalness: 1, roughness: 0.12 });
 
-  // dial ring (horizontal, at the equator height of the globe's stand)
-  const dialTex = makeDialTexture();
+  // dial ring on the bench (inner/outer radii keep the texture's 1.14 : 1.42 proportion)
+  const r0 = 1.62, r1 = (r0 * 1.42) / 1.14;
   const dial = new THREE.Mesh(
-    new THREE.RingGeometry(1.14, 1.42, 256, 1),
+    new THREE.RingGeometry(r0, r1, 256, 1),
     new THREE.MeshPhysicalMaterial({
       color: '#101318', metalness: 0.65, roughness: 0.42, clearcoat: 0.5, clearcoatRoughness: 0.3,
-      emissive: '#ffffff', emissiveMap: dialTex, emissiveIntensity: 0.9, side: THREE.DoubleSide,
+      emissive: '#ffffff', emissiveMap: makeDialTexture(), emissiveIntensity: 0.7,
     }),
   );
   dial.rotation.x = -Math.PI / 2;
+  dial.position.y = TABLE_Y + 0.012;
   dial.receiveShadow = true;
   g.add(dial);
-  const band = new THREE.Mesh(new THREE.CylinderGeometry(1.42, 1.42, 0.035, 192, 1, true), anodized);
-  band.position.y = -0.0175;
+  const band = new THREE.Mesh(new THREE.CylinderGeometry(r1, r1, 0.024, 192, 1, true), anodized);
+  band.position.y = TABLE_Y + 0.012;
   g.add(band);
-  for (const [r, t] of [[1.42, 0.009], [1.14, 0.006]] as const) {
+  for (const [r, t] of [[r1, 0.008], [r0, 0.006]] as const) {
     const lip = new THREE.Mesh(new THREE.TorusGeometry(r, t, 12, 256), polished);
     lip.rotation.x = Math.PI / 2;
+    lip.position.y = TABLE_Y + 0.024;
     g.add(lip);
   }
 
-  // cradle legs
-  for (let i = 0; i < 4; i++) {
-    const a = Math.PI / 4 + (i * Math.PI) / 2;
-    const dir = new THREE.Vector3(Math.cos(a), 0, Math.sin(a));
-    const curve = new THREE.CatmullRomCurve3([
-      dir.clone().multiplyScalar(1.3).setY(-0.03),
-      dir.clone().multiplyScalar(1.22).setY(-0.55),
-      dir.clone().multiplyScalar(0.86).setY(-1.18),
-      dir.clone().multiplyScalar(0.5).setY(TABLE_Y + 0.12),
-    ]);
-    const leg = new THREE.Mesh(new THREE.TubeGeometry(curve, 48, 0.016, 10, false), satin);
-    leg.castShadow = true;
-    g.add(leg);
-  }
-  // pedestal
-  const foot = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.7, 0.07, 96), anodized);
+  // pedestal under the ladder
+  const foot = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.56, 0.07, 128), anodized);
   foot.position.y = TABLE_Y + 0.035;
   foot.castShadow = foot.receiveShadow = true;
   g.add(foot);
-  const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.56, 0.06, 96), satin);
-  cap.position.y = TABLE_Y + 0.1;
-  cap.castShadow = true;
+  const cap = new THREE.Mesh(new THREE.CylinderGeometry(1.44, 1.48, 0.05, 128), satin);
+  cap.position.y = TABLE_Y + 0.095;
+  cap.castShadow = cap.receiveShadow = true;
   g.add(cap);
-  const capRing = new THREE.Mesh(new THREE.TorusGeometry(0.53, 0.006, 8, 128), new THREE.MeshBasicMaterial({ color: '#5fe0ff' }));
+  const capRing = new THREE.Mesh(new THREE.TorusGeometry(1.46, 0.005, 8, 192), new THREE.MeshBasicMaterial({ color: '#5fe0ff' }));
   capRing.rotation.x = Math.PI / 2;
-  capRing.position.y = TABLE_Y + 0.132;
+  capRing.position.y = TABLE_Y + 0.121;
   g.add(capRing);
 
   // breadboard
   const bb = makeBreadboard();
-  for (const t of [bb.map, bb.rough]) { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(2.5, 2.5); }
+  for (const t of [bb.map, bb.rough]) { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(3, 3); }
   const table = new THREE.Mesh(
-    new THREE.PlaneGeometry(14, 14),
+    new THREE.PlaneGeometry(18, 18),
     new THREE.MeshPhysicalMaterial({
       map: bb.map, alphaMap: bb.alpha, roughnessMap: bb.rough, roughness: 0.75, metalness: 0.55,
       transparent: true, clearcoat: 0.08, envMapIntensity: 0.5,
@@ -85,8 +73,8 @@ export function createMotes(count: number): THREE.Points {
   const pos = new Float32Array(count * 3);
   const seed = new Float32Array(count);
   for (let i = 0; i < count; i++) {
-    const r = 1.6 + Math.random() * 3.2, a = Math.random() * Math.PI * 2;
-    pos.set([Math.cos(a) * r, TABLE_Y + 0.2 + Math.random() * 3.6, Math.sin(a) * r], i * 3);
+    const r = 1.7 + Math.random() * 3.4, a = Math.random() * Math.PI * 2;
+    pos.set([Math.cos(a) * r, TABLE_Y + 0.2 + Math.random() * 4.6, Math.sin(a) * r], i * 3);
     seed[i] = Math.random() * 100;
   }
   const geo = new THREE.BufferGeometry();

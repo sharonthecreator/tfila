@@ -1,5 +1,5 @@
 // The lab panels around the instrument: explain card, readouts, control dock and the LIVE inset.
-import { state, nodeById, regionById, nusachById, currentRoute, textRecord, stopOff, KIND_HE, STATUS_HE, REL_IN_HE, REL_HE } from '../state';
+import { state, nodeById, regionById, nusachById, worldById, currentRoute, textRecord, stopOff, KIND_HE, STATUS_HE, REL_IN_HE, REL_HE } from '../state';
 import type { NusachId, PrayerNode, Route, TextStatus } from '../types';
 import { escapeHtml, fmt } from '../hebrew';
 import { loadText } from '../data';
@@ -30,6 +30,48 @@ function subjLink(n: PrayerNode, label?: string): string {
   return `<button class="subj" style="color:${c}" data-node="${n.id}">${escapeHtml(label || n.title)}</button>`;
 }
 
+/** world of the ladder: name chip, and a sentence on where the placement comes from */
+function worldChip(n: PrayerNode): string {
+  const w = worldById(n.world);
+  return `<span style="color:${w.color};border-color:${w.color}55">${['I', 'II', 'III', 'IV'][state.world.worlds.indexOf(w)]} · ${w.he}${n.wsrc === 'ari' ? ' · האר״י' : ''}</span>`;
+}
+function worldLine(n: PrayerNode): string {
+  const w = worldById(n.world);
+  return n.wsrc === 'ari'
+    ? `<p><strong>בסולם:</strong> עולם ה<b style="color:${w.color}">${w.he}</b> — לפי חלוקת האר״י לתפילת השחר (שער הכוונות): ${escapeHtml(w.ari)}</p>`
+    : `<p><strong>בסולם:</strong> עולם ה<b style="color:${w.color}">${w.he}</b> <span style="color:var(--faint)">— שיבוץ מבני של tfila (${escapeHtml(w.rule.split(':')[0])}), לא קביעה קבלית.</span></p>`;
+}
+
+/** one-click link to the passage at its source */
+function sourceLink(rec: { url?: string; src?: string } | null | undefined): string {
+  if (!rec?.url) return '';
+  return `<p class="src-link"><strong>מקור:</strong> <a href="${escapeHtml(rec.url)}" target="_blank" rel="noopener">${escapeHtml(rec.src || 'ספריא')} — פתיחה בספריא ↗</a></p>`;
+}
+
+// ───────────────────────────── breadcrumbs ─────────────────────────────
+/** Where am I, and one clear way back: סולם התפילות › route › stop (or › prayer). */
+export function renderCrumbs(): void {
+  const el = $('crumbs');
+  const route = currentRoute();
+  const node = state.nodeId ? nodeById(state.nodeId) : null;
+  if (!route && !node) { el.hidden = true; el.innerHTML = ''; return; }
+  el.hidden = false;
+  const parts: string[] = [`<button class="crumb" data-home>סולם התפילות</button>`];
+  if (route) {
+    parts.push(state.stopIndex >= 0 ? `<button class="crumb" data-up>${escapeHtml(route.title)}</button>` : `<span class="crumb cur" aria-current="page">${escapeHtml(route.title)}</span>`);
+    if (state.stopIndex >= 0) parts.push(`<span class="crumb cur" aria-current="page"><span class="mono">${state.stopIndex + 1}/${route.stops.length}</span> ${escapeHtml(nodeById(route.stops[state.stopIndex].n).title)}</span>`);
+  } else if (node) {
+    parts.push(`<span class="crumb cur" aria-current="page" style="--c:${regionById(node.region).color}">${escapeHtml(node.title)}</span>`);
+  }
+  const upLabel = route && state.stopIndex >= 0 ? 'חזרה למסלול' : 'חזרה לסולם';
+  el.innerHTML = `<button class="back" data-up title="${upLabel} (Esc)" aria-label="${upLabel}"><span aria-hidden="true">→</span> ${upLabel}</button>
+    <ol>${parts.map((x) => `<li>${x}</li>`).join('')}</ol>
+    ${route ? `<button class="exit" data-exit title="יציאה מהמסלול" aria-label="יציאה מהמסלול ${escapeHtml(route.title)}">✕</button>` : ''}`;
+  el.querySelectorAll<HTMLElement>('[data-up]').forEach((b) => (b.onclick = () => emit('up')));
+  el.querySelector<HTMLElement>('[data-home]')!.onclick = () => emit('home');
+  el.querySelector<HTMLElement>('[data-exit]')?.addEventListener('click', () => emit('exit-route'));
+}
+
 // ───────────────────────────── explain ─────────────────────────────
 export function renderExplain(): void {
   const el = $('explain');
@@ -50,17 +92,19 @@ export function renderExplain(): void {
     html = `
       <span class="eyebrow" style="color:${sec.color}">${escapeHtml(sec.name)} · תחנה ${state.stopIndex + 1}/${route.stops.length}</span>
       <h2>${escapeHtml(n.title)}</h2>
-      <div class="spec"><span>${KIND_HE[s.cond || n.k]}</span>${s.occTotal > 1 ? `<span>מופע ${s.occ}/${s.occTotal}</span>` : ''}<span>${STATUS_HE[rec.status]}${rec.words ? ` · ${fmt(rec.words)} מילים` : ''}</span></div>
+      <div class="spec">${worldChip(n)}<span>${KIND_HE[s.cond || n.k]}</span>${s.occTotal > 1 ? `<span>מופע ${s.occ}/${s.occTotal}</span>` : ''}<span>${STATUS_HE[rec.status]}${rec.words ? ` · ${fmt(rec.words)} מילים` : ''}</span></div>
       ${s.note ? `<p class="lead">${escapeHtml(s.note)}</p>` : ''}
       ${off ? `<div class="notice warn">${s.omit ? 'תחנה זו מראה מה <b>נשמט</b> כאן — היא אינה נאמרת במעמד זה.' : `תחנה זו אינה חלק מהמנהג בנוסח <b>${escapeHtml(ns.short)}</b>.`}</div>` : ''}
       <div class="body">
         <p>${escapeHtml(n.d)}</p>
         <p><strong>מתי:</strong> ${escapeHtml(n.w)}</p>
         ${n.v ? `<p><strong>הבדלי מנהג:</strong> ${escapeHtml(n.v)}</p>` : ''}
+        ${worldLine(n)}
+        ${off ? '' : sourceLink(rec)}
         ${others.length ? `<p><strong>חוזרת במסלול:</strong> ${others.map(({ i }) => `<button class="subj" style="color:var(--accent-2)" data-stop="${i}">תחנה ${i + 1}</button>`).join(' · ')}</p>` : ''}
         ${prev ? `<p>לפני: ${subjLink(nodeById(prev.n))}${next ? ` · אחרי: ${subjLink(nodeById(next.n))}` : ''}</p>` : next ? `<p>אחרי: ${subjLink(nodeById(next.n))}</p>` : ''}
       </div>
-      <div class="actions"><button class="btn primary" data-read>קריאת הטקסט המלא</button>${next ? `<button class="btn" data-stop="${state.stopIndex + 1}">התחנה הבאה ←</button>` : ''}<button class="btn" data-exit>כל המסלולים</button></div>`;
+      <div class="actions"><button class="btn primary" data-read>קריאת הטקסט המלא</button>${next ? `<button class="btn" data-stop="${state.stopIndex + 1}">התחנה הבאה ←</button>` : ''}<button class="btn" data-up>→ מבט על המסלול</button></div>`;
   } else if (route) {
     const { secs } = sections(route);
     const repeated = [...new Set(route.stops.filter((s) => s.occTotal > 1).map((s) => s.n))].map((id) => ({ n: nodeById(id), c: route.stops.filter((s) => s.n === id).length }));
@@ -74,35 +118,37 @@ export function renderExplain(): void {
         ${repeated.length ? `<p><strong>תפילות חוזרות:</strong> ${repeated.map((r) => `${subjLink(r.n)} <span class="num">×${r.c}</span>`).join(' · ')}</p>` : ''}
         <p><strong>חלקי המסלול:</strong> ${secs.map((s) => `<button class="subj" style="color:${s.color}" data-stop="${s.start}">${escapeHtml(s.name)}</button>`).join(' · ')}</p>
       </div>
-      <div class="actions"><button class="btn primary" data-journey>▶ מסע מודרך</button><button class="btn" data-stop="0">לתחנה הראשונה</button><button class="btn" data-exit>כל המסלולים</button></div>
-      <div class="hint">הקו המקווקו מראה את <b>סדר הזמן</b> — הזרימה והאור הנע מראים את הכיוון. קווים צבעוניים: <span style="color:#ffd27a">מכיל</span> · <span style="color:#5dffa2">נוסף אל</span> · <span style="color:#c9a2ff">משתנה לפי מנהג</span> · <span style="color:#7fb2ff">קשור</span>.</div>`;
+      <div class="actions"><button class="btn primary" data-journey>▶ מסע מודרך</button><button class="btn" data-stop="0">לתחנה הראשונה</button><button class="btn" data-exit>→ חזרה לסולם</button></div>
+      <div class="hint">הקו המקווקו מראה את <b>סדר הזמן</b>, והאור הנע — את הכיוון. <span style="color:#c9f6ff">תכלת — עלייה בסולם</span> · <span style="color:#ffc46b">ענבר — ירידה</span>. קשרים: <span style="color:#ffd27a">מכיל</span> · <span style="color:#5dffa2">נוסף אל</span> · <span style="color:#c9a2ff">משתנה לפי מנהג</span> · <span style="color:#7fb2ff">קשור</span>.</div>`;
   } else if (state.nodeId) {
     const n = nodeById(state.nodeId);
     const reg = regionById(n.region);
     const rec = n.texts[state.nusach];
     const ins = state.world.nodes.flatMap((m) => m.rel.filter((r) => r.target === n.id).map((r) => ({ r, m })));
     html = `
-      <span class="eyebrow" style="color:${reg.color}">${escapeHtml(reg.name)}</span>
+      <span class="eyebrow" style="color:${reg.color}">${escapeHtml(reg.name)} · ${worldById(n.world).he}</span>
       <h2>${escapeHtml(n.title)}</h2>
-      <div class="spec"><span>${KIND_HE[n.k]}</span><span>${STATUS_HE[rec.status]}${rec.words ? ` · ${fmt(rec.words)} מילים` : ''}</span>${n.tags.includes('kabbalah') ? '<span>✧ קבלי</span>' : ''}</div>
+      <div class="spec">${worldChip(n)}<span>${KIND_HE[n.k]}</span><span>${STATUS_HE[rec.status]}${rec.words ? ` · ${fmt(rec.words)} מילים` : ''}</span>${n.tags.includes('kabbalah') ? '<span>✧ קבלי</span>' : ''}</div>
       <p class="lead">${escapeHtml(n.d)}</p>
       <div class="body">
         <p><strong>מתי:</strong> ${escapeHtml(n.w)}</p>
         ${n.v ? `<p><strong>הבדלי מנהג:</strong> ${escapeHtml(n.v)}</p>` : ''}
+        ${worldLine(n)}
+        ${sourceLink(rec)}
         ${n.rel.map((r) => `<p>${REL_HE[r.type]}: ${subjLink(nodeById(r.target))}${r.note ? ` <span style="color:var(--faint)">(${escapeHtml(r.note)})</span>` : ''}</p>`).join('')}
         ${ins.map(({ r, m }) => `<p>${REL_IN_HE[r.type]}: ${subjLink(m)}${r.note ? ` <span style="color:var(--faint)">(${escapeHtml(r.note)})</span>` : ''}</p>`).join('')}
         ${routesWith(n.id)}
       </div>
-      <div class="actions"><button class="btn primary" data-read>קריאת הטקסט המלא</button><button class="btn" data-overview>מבט כללי</button></div>`;
+      <div class="actions"><button class="btn primary" data-read>קריאת הטקסט המלא</button><button class="btn" data-up>→ חזרה לסולם</button></div>`;
   } else {
     const featured = state.world.routes.filter((r) => r.featured);
     html = `
-      <span class="eyebrow">עולם התפילות</span>
-      <h2>${state.world.nodes.length} תפילות · ${state.world.regions.length} יבשות</h2>
-      <p class="lead">כל נקודה על הגלובוס היא תפילה, ברכה או טקס. מרחוק רואים את היבשות ואת שמות התפילות; <strong>התקרבו</strong> — והמילים עצמן מופיעות על פני העולם. בחרו מסלול והוא יידלק, תחנה אחר תחנה.</p>
+      <span class="eyebrow">סולם התפילות</span>
+      <h2>${state.world.nodes.length} תפילות · 4 עולמות</h2>
+      <p class="lead">״סֻלָּם מֻצָּב אַרְצָה וְרֹאשׁוֹ מַגִּיעַ הַשָּׁמָיְמָה״. כל שלב בסולם הוא תפילה, ברכה או טקס. כל סיבוב של הסולם הוא עולם — <b style="color:${state.world.worlds[0].color}">עשיה</b>, <b style="color:${state.world.worlds[1].color}">יצירה</b>, <b style="color:${state.world.worlds[2].color}">בריאה</b>, <b style="color:${state.world.worlds[3].color}">אצילות</b> — כפי שהאר״י חילק את תפילת השחר; וכל צד של הסולם הוא תחום. בחרו מסלול וראו אותו <strong>עולה ויורד</strong>; <strong>התקרבו</strong> — והמילים עצמן מופיעות על השלבים.</p>
       <div class="actions">${featured.map((r) => `<button class="btn primary" data-route="${r.id}">✦ ${escapeHtml(r.title)}</button>`).join('')}</div>
       <ul class="regions">${state.world.regions.map((r) => `<li><button data-region="${r.id}" style="color:${r.color}"><i></i><span style="color:#d8e0ec">${escapeHtml(r.name)}</span><small>${state.world.nodes.filter((n) => n.region === r.id).length}</small></button></li>`).join('')}</ul>
-      <div class="hint">גררו לסיבוב · <kbd>גלגלת</kbd> להתקרבות · <kbd>Enter</kbd> בחירה · <kbd>/</kbd> חיפוש · <kbd>Esc</kbd> חזרה. הנוסח הנוכחי: <b style="color:${ns.color}">${escapeHtml(ns.name)}</b>.</div>`;
+      <div class="hint">גררו לסיבוב ולטיפוס · <kbd>גלגלת</kbd> להתקרבות · <kbd>Enter</kbd> בחירה · <kbd>/</kbd> חיפוש · <kbd>Esc</kbd> חזרה. הנוסח הנוכחי: <b style="color:${ns.color}">${escapeHtml(ns.name)}</b>.</div>`;
   }
   el.innerHTML = html;
   el.querySelectorAll<HTMLElement>('[data-node]').forEach((b) => (b.onclick = () => emit('goto', b.dataset.node)));
@@ -113,6 +159,7 @@ export function renderExplain(): void {
   el.querySelector<HTMLElement>('[data-journey]')?.addEventListener('click', () => emit('journey'));
   el.querySelector<HTMLElement>('[data-exit]')?.addEventListener('click', () => emit('exit-route'));
   el.querySelector<HTMLElement>('[data-overview]')?.addEventListener('click', () => emit('overview'));
+  el.querySelector<HTMLElement>('[data-up]')?.addEventListener('click', () => emit('up'));
 }
 
 function routesWith(id: string): string {
@@ -154,6 +201,7 @@ export function renderReadouts(): void {
         ${i >= 0 ? `<div class="mark" style="right:${pct(i, n)}%"></div>` : ''}
         ${secs.map((x, k) => `<span class="tk mono" style="right:${pct(x.start, n)}%">${k + 1}</span>`).join('')}
       </div>
+      ${ladderSpark(route, i)}
       <dl class="ro-extra">
         <div><dt>חלק</dt><dd style="color:${sec.color};font-family:var(--sans)">${escapeHtml(sec.name)}</dd></div>
         <div><dt>מילים</dt><dd>${rec?.words ? fmt(rec.words) : '—'}</dd></div>
@@ -183,7 +231,8 @@ export function renderReadouts(): void {
         <div class="ro"><label>קשרים</label><div class="val">${rels}</div></div>
       </div>
       <dl class="ro-extra">
-        <div><dt>יבשת</dt><dd style="color:${reg.color};font-family:var(--sans)">${escapeHtml(reg.name)}</dd></div>
+        <div><dt>תחום</dt><dd style="color:${reg.color};font-family:var(--sans)">${escapeHtml(reg.name)}</dd></div>
+        <div><dt>עולם</dt><dd style="color:${worldById(n.world).color};font-family:var(--sans)">${worldById(n.world).he}${n.wsrc === 'ari' ? ' · האר״י' : ''}</dd></div>
         <div><dt>סטטוס</dt><dd style="font-family:var(--sans)">${STATUS_HE[rec.status]}</dd></div>
         <div style="grid-column:1/-1"><dt>מהדורה · רישיון</dt><dd id="roEdition" style="font-family:var(--sans)">${rec.id ? '…' : '—'}</dd></div>
       </dl>
@@ -223,6 +272,26 @@ export function renderReadouts(): void {
   }
   el.querySelectorAll<HTMLElement>('[data-stop]').forEach((b) => (b.onclick = () => emit('stop', Number(b.dataset.stop))));
   el.querySelectorAll<HTMLElement>('[data-ns]').forEach((b) => (b.onclick = () => emit('nusach', b.dataset.ns)));
+}
+
+/** The route's climb: the world of every stop, bottom (עשיה) to top (אצילות), with ascents and descents counted. */
+function ladderSpark(route: Route, cur: number): string {
+  const W = 300, H = 74, pad = 8, n = route.stops.length;
+  const lvl = route.stops.map((s) => state.world.worlds.findIndex((w) => w.id === nodeById(s.n).world));
+  const x = (k: number) => W - pad - (n <= 1 ? 0.5 : k / (n - 1)) * (W - pad * 2);
+  const y = (l: number) => H - 12 - (l / 3) * (H - 24);
+  let path = `M${x(0).toFixed(1)},${y(lvl[0]).toFixed(1)}`;
+  for (let k = 1; k < n; k++) path += ` H${x(k).toFixed(1)} V${y(lvl[k]).toFixed(1)}`;
+  let up = 0, down = 0, peaks = 0;
+  for (let k = 1; k < n; k++) { if (lvl[k] > lvl[k - 1]) up++; if (lvl[k] < lvl[k - 1]) down++; if (lvl[k] === 3 && lvl[k - 1] < 3) peaks++; }
+  if (lvl[0] === 3) peaks++;
+  const rows = state.world.worlds.map((w, l) => `<line x1="${pad}" x2="${W - pad}" y1="${y(l)}" y2="${y(l)}" stroke="${w.color}" stroke-opacity=".18" stroke-dasharray="2 4"/><text x="${W - 2}" y="${y(l) - 3}" text-anchor="end" fill="${w.color}" fill-opacity=".75">${w.he}</text>`).join('');
+  return `<figure class="climb" aria-label="עליות וירידות בסולם: ${up} עליות, ${down} ירידות, ${peaks} הגעות לאצילות">
+    <figcaption><span class="lbl">הטיפוס בסולם</span><span class="mono">↑${up} ↓${down} · אצילות ×${peaks}</span></figcaption>
+    <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">${rows}
+      <path d="${path}" fill="none" stroke="#c9f6ff" stroke-width="1.6" stroke-linejoin="round"/>
+      ${cur >= 0 ? `<circle cx="${x(cur)}" cy="${y(lvl[cur])}" r="4" fill="#9ff0ff" stroke="#031016" stroke-width="1.5"/>` : ''}
+    </svg></figure>`;
 }
 
 // ───────────────────────────── dock ─────────────────────────────

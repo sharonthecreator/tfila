@@ -1,5 +1,5 @@
 // Tiny observable store + shared labels.
-import type { Kind, NusachId, PrayerNode, Route, Stop, TextRecord, TextStatus, World } from './types';
+import type { Kind, NusachId, PrayerNode, Route, Stop, TextRecord, TextStatus, World, WorldId } from './types';
 
 export type Tab = 'world' | 'library' | 'compare' | 'learn';
 export type Quality = 'auto' | 'low' | 'medium' | 'high';
@@ -56,6 +56,7 @@ export const nodeById = (id: string): PrayerNode => state.world.nodeMap.get(id)!
 export const routeById = (id: string): Route => state.world.routeMap.get(id)!;
 export const nusachById = (id: NusachId) => state.world.nusachim.find((n) => n.id === id)!;
 export const regionById = (id: string) => state.world.regionMap.get(id)!;
+export const worldById = (id: string) => state.world.worldMap.get(id as WorldId)!;
 export const currentRoute = (): Route | null => (state.routeId ? routeById(state.routeId) : null);
 
 /** The text record for a node (or a specific route stop) in a nusach. */

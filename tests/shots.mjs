@@ -1,5 +1,5 @@
 // Interaction + screenshot test for tfila: node tests/shots.mjs [baseUrl] [outDir] [suite]
-// suites: all | desktop | journey | views | mobile | fallback
+// suites: all | desktop | back | journey | views | mobile | fallback
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
 const base = process.argv[2] || 'http://localhost:4173/';
@@ -26,13 +26,17 @@ if (['all', 'desktop'].includes(only)) {
   await wait(p, 4000);
   await p.screenshot({ path: `${out}/01-instrument.png` });
   check(await p.locator('#readouts .subjects li').count() === 7, 'readouts list all 7 nusachim with coverage');
+  check(await p.locator('.label.world').count() === 4, 'the ladder shows its four worlds');
+  check(await p.locator('#crumbs').isHidden(), 'no breadcrumb on the home view');
 
   await p.click('#dock [data-route="yom-kippur"]');
   await wait(p, 4500);
   await p.screenshot({ path: `${out}/02-yom-kippur.png` });
   check((await p.locator('#explain h2').textContent()).includes('יום כיפור'), 'explain shows the Yom Kippur route');
-  check(await p.locator('#dock .slider .marks i').count() === 44, 'route scrubber has a mark per stop');
-  check(await p.locator('.badge').count() === 44, 'numbered badges for every stop');
+  check(await p.locator('#dock .slider .marks i').count() === 54, 'route scrubber has a mark per stop');
+  check(await p.locator('.badge').count() === 54, 'numbered badges for every stop');
+  check(!(await p.locator('#crumbs').isHidden()) && (await p.locator('#crumbs').textContent()).includes('יום כיפור'), 'breadcrumb shows the route');
+  check((await p.locator('#readouts .climb figcaption').textContent()).includes('אצילות ×'), 'readouts chart the climb up and down the ladder');
 
   await p.evaluate(() => { const s = document.querySelector('#scrub'); s.value = '9'; s.dispatchEvent(new Event('input')); });
   await wait(p, 4500);
@@ -54,8 +58,8 @@ if (['all', 'desktop'].includes(only)) {
   await p.keyboard.press('Escape');
   check(await p.locator('#reader').isHidden(), 'Escape closes the reader');
 
-  // repeated occurrence: stop 13 is Vidui 2/7
-  await p.evaluate(() => { const s = document.querySelector('#scrub'); s.value = '12'; s.dispatchEvent(new Event('input')); });
+  // repeated occurrence: stop 14 is Vidui 2/7
+  await p.evaluate(() => { const s = document.querySelector('#scrub'); s.value = '13'; s.dispatchEvent(new Event('input')); });
   await wait(p, 1500);
   check((await p.locator('#explain .spec').textContent()).includes('מופע 2/7'), 'Vidui shows its occurrence 2/7');
 
@@ -74,8 +78,9 @@ if (['all', 'desktop'].includes(only)) {
   // Ashkenaz wedding: explicit unavailable
   await p.click('#dock [data-ns="ash"]');
   await wait(p, 800);
-  await p.click('#explain [data-exit]');
+  await p.click('#crumbs .exit');
   await wait(p, 600);
+  check(await p.locator('#crumbs').isHidden(), 'the ✕ in the breadcrumb leaves the route');
   await p.click('#dock [data-route="wedding"]');
   await wait(p, 3000);
   await p.evaluate(() => { const s = document.querySelector('#scrub'); s.value = '3'; s.dispatchEvent(new Event('input')); });
@@ -87,11 +92,53 @@ if (['all', 'desktop'].includes(only)) {
   await p.close();
 }
 
+if (['all', 'back'].includes(only)) {
+  // going back: on-screen "חזרה", Esc, and the browser's Back button all step up one layer
+  const p = await open({ width: 1440, height: 900 });
+  await wait(p, 1500);
+  await p.click('#dock [data-route="yom-kippur"]');
+  await wait(p, 2000);
+  await p.click('#explain [data-stop="0"]');
+  await wait(p, 2500);
+  check((await p.locator('#crumbs .crumb.cur').last().textContent()).includes('כפרות'), 'breadcrumb names the current stop');
+  await p.screenshot({ path: `${out}/14-breadcrumb.png` });
+  await p.click('#crumbs .back');
+  await wait(p, 1200);
+  check(new URL(p.url()).hash.includes('route=yom-kippur') && !new URL(p.url()).hash.includes('stop='), '“חזרה” from a stop returns to the route overview');
+  await p.click('#crumbs .back');
+  await wait(p, 1500);
+  check(await p.locator('#crumbs').isHidden() && !p.url().includes('route='), '“חזרה” from the route returns to the whole ladder');
+  await p.click('#dock [data-route="shabbat"]');
+  await wait(p, 1500);
+  await p.goBack();
+  await wait(p, 1500);
+  check(!p.url().includes('route=') && (await p.locator('#explain h2').textContent()).includes('עולמות'), 'browser Back leaves the route');
+  await p.goForward();
+  await wait(p, 1500);
+  check((await p.locator('#explain h2').textContent()).includes('שבת'), 'browser Forward re-enters it');
+  await p.keyboard.press('Escape');
+  await wait(p, 1200);
+  check(!p.url().includes('route='), 'Esc steps back to the ladder');
+  // Kaddish joins the parts of the service, each in its own form and text
+  await p.close();
+  const q = await open({ width: 1440, height: 900 }, '#n=em&route=shacharit&stop=7');
+  await wait(q, 2500);
+  check((await q.locator('#explain').textContent()).includes('חצי קדיש'), 'Shacharit: half Kaddish after Pesukei DeZimra');
+  await q.click('#explain [data-read]');
+  await wait(q, 1500);
+  const k = await q.locator('#readerSheet .prayer').first().textContent();
+  const kp = k.replace(/[\u0591-\u05C7]/g, '');
+  check(/יתגדל/.test(kp) && /דאמירן בעלמא/.test(kp) && !/תתקבל|יהא שלמא/.test(kp), 'its text is the half Kaddish from the siddur');
+  check(await q.locator('#readerSheet .prov a[href*="sefaria.org"]').count() > 0, 'reader links straight to the source');
+  await q.screenshot({ path: `${out}/15-kaddish-reader.png` });
+  await q.close();
+}
+
 if (['all', 'journey'].includes(only)) {
   const p = await open({ width: 1440, height: 900 }, '#n=em&route=yom-kippur');
   await wait(p, 2500);
   await p.click('#dock [data-act="journey"]');
-  await wait(p, 10000);
+  await wait(p, 18000); // software-rendered test browsers run at a couple of frames per second
   const cur = await p.locator('#readouts .ro.big.accent .val').textContent();
   check(parseInt(cur) >= 2, 'guided journey advances (now at ' + cur.trim() + ')');
   await p.click('#dock [data-act="journey"]');
@@ -125,8 +172,13 @@ if (['all', 'views'].includes(only)) {
   await p.click('#tabs [data-tab="learn"]');
   await wait(p, 800);
   await p.screenshot({ path: `${out}/10-learn.png` });
-  check(await p.locator('#learnView svg.chart circle').count() === 17, 'learn chart plots all 17 repeated Yom Kippur occurrences');
-  await p.click('#learnView [data-i="3"]');
+  await p.click('#learnView [data-i="2"]');
+  check(await p.locator('#learnView svg.chart circle').count() === 27, 'learn chart plots all 27 repeated Yom Kippur occurrences (incl. Kaddish)');
+  await p.click('#learnView [data-i="0"]');
+  await wait(p, 800);
+  check((await p.locator('#ariWorlds').textContent()).includes('עולם'), 'the ladder explainer quotes the Ari from Sha\'ar HaKavanot');
+  await p.screenshot({ path: `${out}/10b-learn-ladder.png` });
+  await p.click('#learnView [data-i="5"]');
   check(await p.locator('#learnView table.data tr').count() > 10, 'sources table lists editions and licenses');
   await p.close();
 }

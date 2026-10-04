@@ -1,34 +1,70 @@
-// The tfila instrument: a lacquered globe of prayers in a graduated dial, on an optical breadboard.
-// The globe turns inside its stand (the camera stays above the bench), so the instrument always
-// reads as a physical object. Semantic zoom: region names → titles → prayer-word medallions.
+// סולם יעקב — the tfila instrument. "סֻלָּם מֻצָּב אַרְצָה וְרֹאשׁוֹ מַגִּיעַ הַשָּׁמָיְמָה" (Genesis 28:12):
+// a spiral ladder of prayers standing on an optical bench and reaching into light. One turn of the helix per
+// world of the Ari — עשיה, יצירה, בריאה, אצילות, bottom to top — and a 30° sector of every turn per region,
+// so a service that climbs from preparation to the Amidah literally climbs the ladder. Lights travel up and
+// down the rails ("מלאכי אלהים עולים ויורדים בו"). Inside, a pillar of the prayers' own words.
+// Semantic zoom: worlds and regions → titles → prayer-word medallions on the rungs.
 import * as THREE from 'three';
 import { Line2 } from 'three/addons/lines/Line2.js';
 import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
 import type { PrayerNode, Route, World } from '../types';
-import { llToVec, vecToLL, frameAt, slerpVec, arcPoints, angleBetween, smoothstep, easeInOutCubic } from './geo';
-import { makeDustTexture, makeMedallion, makeBackdrop } from './textures';
+import { cyl, radialAt, angleOf, angleDelta, smoothstep, easeInOutCubic, D2R } from './geo';
+import { makePillarTexture, makeMedallion, makeBackdrop } from './textures';
 import { createStudioEnvironment } from './environment';
-import { createInstrument, createMotes, TABLE_Y } from './instrument';
+import { createBase, createMotes, TABLE_Y } from './instrument';
 import { Pipeline } from '../render/Pipeline';
 import type { QualityPreset } from '../render/quality';
 
 const REL_COLORS: Record<string, string> = { contains: '#ffd27a', adds: '#5dffa2', varies: '#c9a2ff', related: '#7fb2ff' };
-export const MIN_ALT = 0.07, MAX_ALT = 6.2, HOME_ALT = 4.6;
-const NODE_R = 1.004;
+export const MIN_D = 0.14, MAX_D = 17;
+const PILLAR_R = 0.42;
+const TILE = 0.1;
+const TILT = 34 * D2R; // medallions lean back toward a camera looking down the steps
+const ROMAN = ['I', 'II', 'III', 'IV'];
 
 export interface WorldCallbacks {
   onSelect?: (id: string) => void;
   onHover?: (id: string | null, x: number, y: number) => void;
   onBackground?: () => void;
-  onFrame?: (alt: number) => void;
+  onFrame?: (d: number) => void;
   onKeyNav?: (id: string | null) => void;
 }
 
 interface Proj { x: number; y: number; z: number; visible: boolean; facing: number }
 interface LabelRec { el: HTMLDivElement; w: number; h: number; op: number; shown: boolean; state: number }
 interface Tile { mesh: THREE.Mesh; tex: THREE.CanvasTexture; last: number }
-interface Flight { from: THREE.Vector3; to: THREE.Vector3; a0: number; a1: number; peak: number; t0: number; d: number; resolve: () => void }
+interface View { t: THREE.Vector3; az: number; d: number }
+interface Flight { from: View; to: View; peak: number; t0: number; dur: number; resolve: () => void }
+interface Angel { u: number; dir: number; speed: number; r: number }
+
+/** Cutaway: rails and rungs right next to a close camera are cut away, so the rung in focus stays unobstructed. */
+const CUT = { pos: { value: new THREE.Vector3() }, r: { value: 0 } };
+function withCutaway<T extends THREE.Material>(m: T): T {
+  m.onBeforeCompile = (sh) => {
+    sh.uniforms.uCutPos = CUT.pos;
+    sh.uniforms.uCutR = CUT.r;
+    sh.vertexShader = 'varying vec3 vCutW;\n' + sh.vertexShader.replace('#include <project_vertex>', `#include <project_vertex>
+      #ifdef USE_INSTANCING
+        vCutW = (modelMatrix * instanceMatrix * vec4(transformed, 1.0)).xyz;
+      #else
+        vCutW = (modelMatrix * vec4(transformed, 1.0)).xyz;
+      #endif`);
+    sh.fragmentShader = 'uniform vec3 uCutPos; uniform float uCutR; varying vec3 vCutW;\n' + sh.fragmentShader.replace('void main() {', 'void main() {\n  if (uCutR > 0.0 && distance(vCutW, uCutPos) < uCutR) discard;');
+  };
+  return m;
+}
+
+function glowTexture(stops: [number, string][]): THREE.CanvasTexture {
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const x = c.getContext('2d')!;
+  const g = x.createRadialGradient(64, 64, 0, 64, 64, 64);
+  for (const [o, col] of stops) g.addColorStop(o, col);
+  x.fillStyle = g;
+  x.fillRect(0, 0, 128, 128);
+  return new THREE.CanvasTexture(c);
+}
 
 export class PrayerWorld {
   readonly renderer: THREE.WebGLRenderer;
@@ -38,25 +74,31 @@ export class PrayerWorld {
   private readonly timer = new THREE.Timer();
   private time = 0;
 
-  private readonly globeGroup = new THREE.Group();
-  private globeMat!: THREE.ShaderMaterial;
-  private globe!: THREE.Mesh;
-  private shell!: THREE.Mesh;
-  private atmosphere!: THREE.Mesh;
-  private motes: THREE.Points | null = null;
   private keyLight!: THREE.DirectionalLight;
+  private motes: THREE.Points | null = null;
+  private ladder = new THREE.Group();
+  private pillar!: THREE.Mesh;
+  private pillarMat!: THREE.ShaderMaterial;
+  private heaven!: THREE.Group;
+  private angels: Angel[] = [];
+  private angelPoints!: THREE.Points;
+  private angelMat!: THREE.ShaderMaterial;
+  private railMats: LineMaterial[] = [];
+  private metalMats: THREE.MeshPhysicalMaterial[] = [];
 
   private world!: World;
+  private L = { turnH: 0.9, rIn: 0.74, rOut: 1.36, base: -1.32, turns: 4, top: 2.28 };
   private nodes: PrayerNode[] = [];
   private nodeIndex = new Map<string, number>();
   private nodePos: THREE.Vector3[] = [];
-  private nodeWorld: THREE.Vector3[] = [];
   private nodePoints!: THREE.Points;
   private nodeMat!: THREE.ShaderMaterial;
   private relLines: Line2[] = [];
   private relGroup = new THREE.Group();
   private nodeLabels: LabelRec[] = [];
-  private regionLabels: { el: HTMLDivElement; pos: THREE.Vector3; w: number; h: number; op: number }[] = [];
+  private regionLabels: { el: HTMLDivElement; a: number; w: number; h: number; op: number }[] = [];
+  private worldLabels: { el: HTMLDivElement; y: number; w: number; h: number; op: number }[] = [];
+  private captions: { el: HTMLDivElement; pos: THREE.Vector3; w: number; h: number; op: number; far: number }[] = [];
   private badges: { el: HTMLDivElement; pos: THREE.Vector3; i: number }[] = [];
   private focusTag!: HTMLDivElement;
   private proj: Proj[] = [];
@@ -73,11 +115,10 @@ export class PrayerWorld {
   private tileMeshes: THREE.Mesh[] = [];
   private previews: Record<string, string> = {};
 
-  // camera rig
-  focus = llToVec(16, 20);
-  alt = HOME_ALT + 1.4;
-  private vel = { x: 0, y: 0 };
+  // camera rig: a target, an azimuth around the ladder's axis and a distance
+  view: View = { t: new THREE.Vector3(0, 0.4, 0), az: 0.3, d: 9 };
   private flight: Flight | null = null;
+  private vel = { az: 0, y: 0 };
   private dragging = false;
   private lastInteraction = performance.now();
   private insets = { left: 0, right: 0, top: 0, bottom: 0 };
@@ -104,11 +145,10 @@ export class PrayerWorld {
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.scene.background = makeBackdrop();
     this.scene.environment = createStudioEnvironment(this.renderer);
-    this.scene.add(this.globeGroup);
-
+    this.scene.add(this.ladder);
     this.buildLights();
-    this.buildGlobe();
-    this.scene.add(createInstrument());
+    this.buildBeam();
+    this.scene.add(createBase());
     this.applyQuality(preset);
     this.bindInput();
     this.resize();
@@ -119,77 +159,24 @@ export class PrayerWorld {
   // ───────────────────────────── construction ─────────────────────────────
   private buildLights(): void {
     const key = new THREE.DirectionalLight('#fff3e2', 2.4);
-    key.position.set(-3.5, 6.5, 4.5);
+    key.position.set(-4, 8, 5);
     key.castShadow = true;
-    key.shadow.camera.left = key.shadow.camera.bottom = -3;
-    key.shadow.camera.right = key.shadow.camera.top = 3;
-    key.shadow.camera.near = 2;
-    key.shadow.camera.far = 16;
+    key.shadow.camera.left = key.shadow.camera.bottom = -3.4;
+    key.shadow.camera.right = key.shadow.camera.top = 3.4;
+    key.shadow.camera.near = 3;
+    key.shadow.camera.far = 22;
     key.shadow.bias = -0.0003;
     key.shadow.normalBias = 0.02;
     key.shadow.radius = 5;
+    key.target.position.set(0, 0.2, 0);
     this.keyLight = key;
     const rim = new THREE.DirectionalLight('#9fc4ff', 1.1);
-    rim.position.set(2, 3, -6);
-    this.scene.add(key, rim, new THREE.HemisphereLight('#2a3446', '#050608', 0.35));
+    rim.position.set(2, 4, -6);
+    this.scene.add(key, key.target, rim, new THREE.HemisphereLight('#2a3446', '#050608', 0.4));
   }
 
-  private buildGlobe(): void {
-    this.globeMat = new THREE.ShaderMaterial({
-      uniforms: {
-        uDust: { value: null }, uHasDust: { value: 0 }, uDustK: { value: 1 },
-        uLight: { value: new THREE.Vector3(-0.45, 0.65, 0.6).normalize() },
-        uCam: { value: new THREE.Vector3() },
-      },
-      vertexShader: /* glsl */ `
-        varying vec3 vNw; varying vec2 vUv; varying vec3 vW;
-        void main(){ vNw = normalize(mat3(modelMatrix) * normal); vUv = uv; vec4 w = modelMatrix*vec4(position,1.); vW = w.xyz;
-          gl_Position = projectionMatrix*viewMatrix*w; }`,
-      fragmentShader: /* glsl */ `
-        uniform sampler2D uDust; uniform float uHasDust; uniform float uDustK; uniform vec3 uLight; uniform vec3 uCam;
-        varying vec3 vNw; varying vec2 vUv; varying vec3 vW;
-        float gridLine(float x, float w){ float f = abs(fract(x)-0.5); return smoothstep(w, 0.0, 0.5-f); }
-        void main(){
-          vec3 n = normalize(vNw);
-          vec3 v = normalize(uCam - vW);
-          float fres = pow(1.0 - max(dot(n, v), 0.0), 3.0);
-          float lit = 0.5 + 0.5*dot(n, uLight);
-          vec3 base = mix(vec3(0.0025,0.0032,0.006), vec3(0.011,0.015,0.026), lit*lit);
-          float lat = vUv.y*180.0, lon = vUv.x*360.0;
-          float g = max(gridLine(lat/15.0, 0.010), gridLine(lon/15.0, 0.008*max(0.25, sin(vUv.y*3.14159))));
-          base += vec3(0.45,0.75,0.9)*g*0.05;
-          vec4 dust = uHasDust > 0.5 ? texture2D(uDust, vUv) : vec4(0.);
-          base += dust.rgb * dust.a * (0.85 + 0.35*lit) * uDustK * 1.1;
-          base += vec3(0.37,0.88,1.0) * fres * 0.14;
-          gl_FragColor = vec4(base, 1.0);
-        }`,
-    });
-    this.globe = new THREE.Mesh(new THREE.SphereGeometry(1, 160, 120), this.globeMat);
-    this.globe.castShadow = true;
-    this.globeGroup.add(this.globe);
-
-    // lacquer: specular-only clearcoat shell (additive), so the studio lights glint on the globe
-    this.shell = new THREE.Mesh(
-      new THREE.SphereGeometry(1.0018, 128, 96),
-      new THREE.MeshPhysicalMaterial({ color: '#000', roughness: 0.06, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.04, envMapIntensity: 0.16, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }),
-    );
-    this.shell.renderOrder = 6;
-    this.scene.add(this.shell);
-
-    this.atmosphere = new THREE.Mesh(
-      new THREE.SphereGeometry(1.09, 96, 64),
-      new THREE.ShaderMaterial({
-        uniforms: { uCam: { value: new THREE.Vector3() } },
-        vertexShader: /* glsl */ `varying vec3 vN; varying vec3 vW; void main(){ vN = normalize(normal); vec4 w = modelMatrix*vec4(position,1.); vW=w.xyz; gl_Position = projectionMatrix*viewMatrix*w; }`,
-        fragmentShader: /* glsl */ `uniform vec3 uCam; varying vec3 vN; varying vec3 vW;
-          void main(){ float d = dot(normalize(vN), normalize(uCam - vW)); float a = pow(clamp(-d*2.4, 0.0, 1.0), 2.6) * 0.2;
-            gl_FragColor = vec4(vec3(0.37,0.85,1.0)*a, a); }`,
-        side: THREE.BackSide, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
-      }),
-    );
-    this.scene.add(this.atmosphere);
-
-    // focus beam: the "plane of focus" of this instrument — a light shaft rising from the selected prayer
+  private buildBeam(): void {
+    // the plane of focus of this instrument: a thin shaft of light rising from the selected prayer
     this.beamMat = new THREE.ShaderMaterial({
       uniforms: { uTime: { value: 0 }, uOp: { value: 0 } },
       vertexShader: /* glsl */ `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.); }`,
@@ -198,12 +185,12 @@ export class PrayerWorld {
           gl_FragColor = vec4(vec3(0.62,0.94,1.0)*a*s*1.6, a*s); }`,
       transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
     });
-    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.0035, 0.0035, 0.42, 12, 1, true).translate(0, 0.21, 0), this.beamMat);
+    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.0035, 0.0035, 0.36, 12, 1, true).translate(0, 0.18, 0), this.beamMat);
     const ring = new THREE.Mesh(new THREE.RingGeometry(0.017, 0.0205, 64).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: '#9ff0ff', transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
     this.beam = new THREE.Group();
     this.beam.add(shaft, ring);
     this.beam.visible = false;
-    this.globeGroup.add(this.beam);
+    this.scene.add(this.beam);
   }
 
   applyQuality(p: QualityPreset): void {
@@ -214,7 +201,6 @@ export class PrayerWorld {
     this.keyLight.shadow.mapSize.set(p.shadowSize, p.shadowSize);
     this.keyLight.shadow.map?.dispose();
     (this.keyLight.shadow as unknown as { map: THREE.WebGLRenderTarget | null }).map = null;
-    this.shell.visible = p.shell;
     if (this.motes) { this.scene.remove(this.motes); this.motes.geometry.dispose(); }
     this.motes = createMotes(p.motes);
     this.scene.add(this.motes);
@@ -231,13 +217,177 @@ export class PrayerWorld {
   // ───────────────────────────── world data ─────────────────────────────
   setWorld(world: World): void {
     this.world = world;
+    const l = world.ladder;
+    this.L = { turnH: l.turnH, rIn: l.rIn, rOut: l.rOut, base: l.base, turns: l.turns, top: l.base + l.turns * l.turnH };
     this.nodes = world.nodes;
     this.nodeIndex = new Map(this.nodes.map((n, i) => [n.id, i]));
-    this.nodePos = this.nodes.map((n) => llToVec(n.lat, n.lon, NODE_R));
-    this.nodeWorld = this.nodePos.map((p) => p.clone());
+    this.nodePos = this.nodes.map((n) => cyl(n.a, n.r, n.y + 0.012));
+    this.buildLadder();
     this.buildNodes();
     this.buildRelations();
     this.buildLabels();
+    this.view = { t: new THREE.Vector3(0, this.midY, 0), az: 0.35, d: this.homeD() * 1.25 };
+  }
+
+  private get midY(): number { return (TABLE_Y - 0.3 + this.L.top + 1.2) / 2; }
+
+  /** unwrapped helix angle (deg) of a node: world index × 360 + its sector angle */
+  private unwrapped(n: PrayerNode): number { return this.world.worlds.findIndex((w) => w.id === n.world) * 360 + n.a; }
+  private helixY(u: number): number { return this.L.base + (u / 360) * this.L.turnH; }
+
+  private buildLadder(): void {
+    const { rIn, rOut, turns, top } = this.L;
+    this.ladder.clear();
+    const polished = withCutaway(new THREE.MeshPhysicalMaterial({ color: '#dfe3e8', metalness: 1, roughness: 0.16, clearcoat: 0.3 }));
+    const satin = withCutaway(new THREE.MeshPhysicalMaterial({ color: '#ffffff', metalness: 1, roughness: 0.32 }));
+    // close up, the metal steps back to a ghost so the medallion and its words carry the view
+    for (const m of [polished, satin]) { m.transparent = true; m.userData.base = 1; }
+    this.metalMats = [polished, satin];
+    const worldColors = this.world.worlds.map((w) => new THREE.Color(w.color));
+
+    // two rails: helices of one turn per world
+    const U = turns * 360;
+    this.railMats = [];
+    for (const r of [rIn, rOut]) {
+      const pts: THREE.Vector3[] = [];
+      for (let u = 0; u <= U; u += 3) pts.push(cyl(u, r, this.helixY(u)));
+      const tube = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), pts.length * 2, 0.011, 8, false), polished);
+      tube.castShadow = true;
+      this.ladder.add(tube);
+      // a hairline of each world's light along the rail
+      const geo = new LineGeometry();
+      geo.setPositions(pts.flatMap((p) => [p.x * 1.0, p.y + 0.0, p.z]));
+      geo.setColors(pts.flatMap((_, i) => worldColors[Math.min(turns - 1, Math.floor((i * 3) / 360))].toArray()));
+      const m = this.lineMat('#ffffff', 1.4, { opacity: 0.32 });
+      m.vertexColors = true;
+      this.railMats.push(m);
+      const glow = new Line2(geo, m);
+      glow.computeLineDistances();
+      glow.renderOrder = 2;
+      this.ladder.add(glow);
+      // posts down to the pedestal, and finials at the top
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.011, this.L.base - (TABLE_Y + 0.12), 10), polished);
+      post.position.copy(cyl(0, r, (this.L.base + TABLE_Y + 0.12) / 2));
+      post.castShadow = true;
+      this.ladder.add(post);
+      const fin = new THREE.Mesh(new THREE.SphereGeometry(0.026, 20, 14), new THREE.MeshBasicMaterial({ color: '#fff6dc' }));
+      fin.position.copy(cyl(0, r, top));
+      this.ladder.add(fin);
+    }
+
+    // rungs: one under every prayer, and plain rungs every 7.5° in between
+    const nodeU = this.nodes.map((n) => this.unwrapped(n));
+    const rungs: { u: number; color: THREE.Color }[] = this.nodes.map((n, i) => ({ u: nodeU[i], color: new THREE.Color(this.world.regionMap.get(n.region)!.color).lerp(new THREE.Color('#ffffff'), 0.35) }));
+    for (let u = 3.75; u < U; u += 7.5) if (!nodeU.some((x) => Math.abs(x - u) < 2.8)) rungs.push({ u, color: new THREE.Color('#9aa0a8') });
+    const len = rOut - rIn;
+    const rungGeo = new THREE.CylinderGeometry(0.0068, 0.0068, len, 8);
+    const inst = new THREE.InstancedMesh(rungGeo, satin, rungs.length);
+    const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), s1 = new THREE.Vector3(1, 1, 1);
+    rungs.forEach((g, i) => {
+      const a = g.u % 360;
+      q.setFromUnitVectors(up, radialAt(a));
+      m4.compose(cyl(a, (rIn + rOut) / 2, this.helixY(g.u)), q, s1);
+      inst.setMatrixAt(i, m4);
+      inst.setColorAt(i, g.color);
+    });
+    inst.castShadow = true;
+    this.ladder.add(inst);
+
+    // pillar of words
+    const bottom = TABLE_Y + 0.12, ptop = top + 0.12;
+    this.pillarMat = new THREE.ShaderMaterial({
+      uniforms: {
+        uWords: { value: null }, uHas: { value: 0 }, uTime: { value: 0 }, uCam: { value: new THREE.Vector3() },
+        uLight: { value: new THREE.Vector3(-0.45, 0.65, 0.6).normalize() }, uSel: { value: new THREE.Vector3(0, 0, 0) },
+        uBase: { value: this.L.base }, uTurnH: { value: this.L.turnH }, uTurns: { value: turns },
+        uWorldCols: { value: worldColors.map((c) => new THREE.Vector3(c.r, c.g, c.b)) }, uWordsK: { value: 1 },
+      },
+      vertexShader: /* glsl */ `
+        varying vec3 vN; varying vec2 vUv; varying vec3 vW;
+        void main(){ vN = normalize(mat3(modelMatrix)*normal); vUv = uv; vec4 w = modelMatrix*vec4(position,1.); vW = w.xyz;
+          gl_Position = projectionMatrix*viewMatrix*w; }`,
+      fragmentShader: /* glsl */ `
+        uniform sampler2D uWords; uniform float uHas; uniform float uTime; uniform vec3 uCam; uniform vec3 uLight; uniform vec3 uSel;
+        uniform float uBase; uniform float uTurnH; uniform float uTurns; uniform vec3 uWorldCols[4]; uniform float uWordsK;
+        varying vec3 vN; varying vec2 vUv; varying vec3 vW;
+        void main(){
+          vec3 n = normalize(vN); vec3 v = normalize(uCam - vW);
+          float lit = 0.5 + 0.5*dot(n, uLight);
+          float fres = pow(1.0 - max(dot(n, v), 0.0), 3.0);
+          float ang = vUv.x * 6.2831853;
+          float u = (vW.y - uBase) / uTurnH - vUv.x;           // helix coordinate: integer = a rung of world u
+          float w = clamp(floor(u + 0.5), 0.0, uTurns - 1.0);
+          vec3 wc = w < 0.5 ? uWorldCols[0] : w < 1.5 ? uWorldCols[1] : w < 2.5 ? uWorldCols[2] : uWorldCols[3];
+          vec3 base = mix(vec3(0.004,0.005,0.009), vec3(0.016,0.02,0.032), lit*lit);
+          float band = smoothstep(0.5, 0.0, abs(u - floor(u + 0.5))) * step(-0.5, u) * step(u, uTurns - 0.5);
+          base += wc * band * 0.018;
+          vec4 words = uHas > 0.5 ? texture2D(uWords, vUv) : vec4(0.);
+          base += words.rgb * words.a * (0.8 + 0.4*lit) * 1.25 * uWordsK;
+          // prayer rising: soft bands of light travelling up the pillar
+          float rise = pow(0.5 + 0.5*sin(vW.y*5.0 - uTime*0.9 + sin(ang*3.0)*0.4), 18.0);
+          base += vec3(0.55,0.85,1.0) * rise * 0.035;
+          // glow behind the prayer in focus
+          float da = abs(mod(ang - uSel.x + 3.14159265, 6.2831853) - 3.14159265);
+          base += vec3(0.62,0.94,1.0) * uSel.z * exp(-da*da*18.0 - pow((vW.y - uSel.y)*7.0, 2.0)) * 0.22;
+          base += vec3(0.37,0.88,1.0) * fres * 0.1;
+          gl_FragColor = vec4(base, 1.0);
+        }`,
+    });
+    this.pillar = new THREE.Mesh(new THREE.CylinderGeometry(PILLAR_R, PILLAR_R, ptop - bottom, 160, 1, true).translate(0, (ptop + bottom) / 2, 0), this.pillarMat);
+    this.pillar.castShadow = true;
+    this.ladder.add(this.pillar);
+    const crown = new THREE.Mesh(new THREE.TorusGeometry(PILLAR_R, 0.008, 10, 160), new THREE.MeshBasicMaterial({ color: '#fff3cf' }));
+    crown.rotation.x = Math.PI / 2;
+    crown.position.y = ptop;
+    this.ladder.add(crown);
+    const lid = new THREE.Mesh(new THREE.CircleGeometry(PILLAR_R, 96).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: '#2a2a22' }));
+    lid.position.y = ptop - 0.001;
+    this.ladder.add(lid);
+
+    // world boundaries: faint level rings where each turn ends
+    for (let w = 0; w <= turns; w++) {
+      const pts: number[] = [];
+      for (let a = 0; a <= 360; a += 3) pts.push(...cyl(a, rOut + 0.1, this.L.base + w * this.L.turnH).toArray());
+      const geo = new LineGeometry();
+      geo.setPositions(pts);
+      const ring = new Line2(geo, this.lineMat(this.world.worlds[Math.min(w, turns - 1)].color, 1, { opacity: 0.16, dashed: true, dashSize: 0.03, gapSize: 0.03 }));
+      ring.computeLineDistances();
+      this.ladder.add(ring);
+    }
+
+    // heaven: the ladder's head reaches into light
+    this.heaven = new THREE.Group();
+    const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture([[0, 'rgba(255,246,220,0.9)'], [0.18, 'rgba(255,226,170,0.35)'], [0.5, 'rgba(120,200,255,0.08)'], [1, 'rgba(95,224,255,0)']]), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+    halo.scale.setScalar(3.2);
+    const core = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture([[0, 'rgba(255,255,255,1)'], [0.3, 'rgba(255,240,200,0.5)'], [1, 'rgba(255,240,200,0)']]), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+    core.scale.setScalar(0.7);
+    this.heaven.add(halo, core);
+    this.heaven.position.y = top + 0.62;
+    this.ladder.add(this.heaven);
+
+    // angels ascending and descending
+    const count = 14;
+    this.angels = Array.from({ length: count }, (_, i) => ({
+      u: (i / count) * U, dir: i % 2 ? -1 : 1, speed: 10 + (i % 5) * 2.2, r: rIn + (rOut - rIn) * (0.25 + 0.5 * ((i * 0.37) % 1)),
+    }));
+    const ag = new THREE.BufferGeometry();
+    ag.setAttribute('position', new THREE.BufferAttribute(new Float32Array(count * 3), 3));
+    ag.setAttribute('alpha', new THREE.BufferAttribute(new Float32Array(count), 1));
+    ag.setAttribute('dir', new THREE.BufferAttribute(new Float32Array(this.angels.map((a) => a.dir)), 1));
+    this.angelMat = new THREE.ShaderMaterial({
+      uniforms: { uPR: { value: 1 } },
+      vertexShader: /* glsl */ `attribute float alpha; attribute float dir; uniform float uPR; varying float vA; varying float vDir;
+        void main(){ vec4 mv = modelViewMatrix*vec4(position,1.); gl_Position = projectionMatrix*mv; vA = alpha; vDir = dir;
+          gl_PointSize = clamp(uPR * 26.0 / -mv.z, 2.0*uPR, 14.0*uPR); }`,
+      fragmentShader: /* glsl */ `varying float vA; varying float vDir; void main(){ float d = length(gl_PointCoord-0.5);
+        float a = (smoothstep(0.5,0.0,d)*0.6 + smoothstep(0.12,0.0,d)) * vA;
+        vec3 c = vDir > 0.0 ? vec3(0.8,0.95,1.0) : vec3(1.0,0.86,0.6);
+        gl_FragColor = vec4(c*a*1.4, a); }`,
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    });
+    this.angelPoints = new THREE.Points(ag, this.angelMat);
+    this.angelPoints.frustumCulled = false;
+    this.ladder.add(this.angelPoints);
   }
 
   private buildNodes(): void {
@@ -247,7 +397,7 @@ export class PrayerWorld {
       pos.set(this.nodePos[i].toArray(), i * 3);
       const c = new THREE.Color(this.world.regionMap.get(n.region)!.color);
       col.set([c.r, c.g, c.b], i * 3);
-      size[i] = 6 + n.imp * 3;
+      size[i] = 5 + n.imp * 2.6;
     });
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
@@ -255,14 +405,14 @@ export class PrayerWorld {
     g.setAttribute('size', new THREE.BufferAttribute(size, 1));
     g.setAttribute('state', new THREE.BufferAttribute(st, 1));
     this.nodeMat = new THREE.ShaderMaterial({
-      uniforms: { uTime: { value: 0 }, uPR: { value: 1 }, uAlt: { value: 1 }, uMotion: { value: 1 } },
+      uniforms: { uTime: { value: 0 }, uPR: { value: 1 }, uD: { value: 1 }, uMotion: { value: 1 } },
       vertexShader: /* glsl */ `
         attribute vec3 color; attribute float size; attribute float state;
-        uniform float uTime; uniform float uPR; uniform float uAlt; uniform float uMotion;
+        uniform float uTime; uniform float uPR; uniform float uD; uniform float uMotion;
         varying vec3 vC; varying float vS; varying float vPulse;
         void main(){
           vec4 mv = modelViewMatrix*vec4(position,1.); gl_Position = projectionMatrix*mv;
-          float s = size * clamp(1.6/(uAlt+0.35), 0.8, 2.8);
+          float s = size * clamp(3.2/(uD+0.6), 0.75, 2.6);
           if (state > 0.5 && state < 1.5) s *= 0.55;
           if (state > 1.5) s *= 1.3;
           vPulse = state > 2.5 ? 0.5 + 0.5*sin(uTime*3.0*uMotion) : 0.0;
@@ -286,7 +436,7 @@ export class PrayerWorld {
     });
     this.nodePoints = new THREE.Points(g, this.nodeMat);
     this.nodePoints.renderOrder = 3;
-    this.globeGroup.add(this.nodePoints);
+    this.ladder.add(this.nodePoints);
   }
 
   private lineMat(color: string, width: number, o: { opacity?: number; dashed?: boolean; dashSize?: number; gapSize?: number } = {}): LineMaterial {
@@ -299,6 +449,23 @@ export class PrayerWorld {
     return m;
   }
 
+  /** A path between two points on the ladder that wraps around the outside of it and never cuts the pillar. */
+  private arc(a: THREE.Vector3, b: THREE.Vector3, bulge = 1): THREE.Vector3[] {
+    const aa = angleOf(a), ab = angleOf(b);
+    const ra = Math.hypot(a.x, a.z), rb = Math.hypot(b.x, b.z);
+    const dA = angleDelta(aa, ab), dY = b.y - a.y;
+    const span = Math.abs(dA) / 90 + Math.abs(dY) / 1.1;
+    const lift = (0.05 + 0.2 * Math.min(1, span)) * bulge;
+    const n = Math.max(8, Math.round(10 + Math.abs(dA) / 3 + Math.abs(dY) * 30));
+    const pts: THREE.Vector3[] = [];
+    for (let i = 0; i <= n; i++) {
+      const t = i / n;
+      const e = t * t * (3 - 2 * t) * 0.35 + t * 0.65;
+      pts.push(cyl(aa + dA * t, THREE.MathUtils.lerp(ra, rb, t) + Math.sin(Math.PI * t) * lift, a.y + dY * e));
+    }
+    return pts;
+  }
+
   private buildRelations(): void {
     this.relGroup.clear();
     this.relLines = [];
@@ -306,11 +473,11 @@ export class PrayerWorld {
       for (const r of n.rel) {
         const ti = this.nodeIndex.get(r.target);
         if (ti == null) continue;
-        const pts = arcPoints(this.nodePos[this.nodeIndex.get(n.id)!], this.nodePos[ti], { segments: 64 });
+        const pts = this.arc(this.nodePos[this.nodeIndex.get(n.id)!], this.nodePos[ti], 0.6);
         const geo = new LineGeometry();
         geo.setPositions(pts.flatMap((p) => [p.x, p.y, p.z]));
         const dashed = r.type === 'adds' || r.type === 'varies';
-        const mat = this.lineMat(REL_COLORS[r.type], 1.5, { dashed, dashSize: r.type === 'adds' ? 0.012 : 0.004, gapSize: r.type === 'adds' ? 0.008 : 0.007, opacity: 0.2 });
+        const mat = this.lineMat(REL_COLORS[r.type], 1.4, { dashed, dashSize: r.type === 'adds' ? 0.016 : 0.005, gapSize: r.type === 'adds' ? 0.01 : 0.009, opacity: 0.16 });
         const line = new Line2(geo, mat);
         line.computeLineDistances();
         line.renderOrder = 2;
@@ -319,7 +486,7 @@ export class PrayerWorld {
         this.relLines.push(line);
       }
     }
-    this.globeGroup.add(this.relGroup);
+    this.ladder.add(this.relGroup);
   }
 
   private buildLabels(): void {
@@ -337,12 +504,30 @@ export class PrayerWorld {
     this.regionLabels = this.world.regions.map((r) => {
       const el = document.createElement('div');
       el.className = 'label region';
-      const members = this.nodes.filter((n) => n.region === r.id);
-      el.innerHTML = `<span class="dot" style="color:${r.color}"></span>${r.name}<span class="v">${members.length}</span>`;
+      const count = this.nodes.filter((n) => n.region === r.id).length;
+      el.innerHTML = `<span class="dot" style="color:${r.color}"></span>${r.name}<span class="v">${count}</span>`;
       this.labelsEl.appendChild(el);
-      const maxLat = Math.max(...members.map((n) => n.lat));
-      return { el, pos: llToVec(Math.min(maxLat + 4, 84), r.lon, 1.01), w: 0, h: 0, op: 0 };
+      return { el, a: r.a, w: 0, h: 0, op: 0 };
     });
+    this.worldLabels = this.world.worlds.map((w, i) => {
+      const el = document.createElement('div');
+      el.className = 'label world';
+      el.style.setProperty('--wc', w.color);
+      el.innerHTML = `<span class="n">${ROMAN[i]}</span><span class="he">${w.he}</span><span class="en">${w.en.toUpperCase()}</span>`;
+      this.labelsEl.appendChild(el);
+      return { el, y: this.L.base + (i + 0.5) * this.L.turnH, w: 0, h: 0, op: 0 };
+    });
+    const caption = (html: string, pos: THREE.Vector3, far: number) => {
+      const el = document.createElement('div');
+      el.className = 'label caption';
+      el.innerHTML = html;
+      this.labelsEl.appendChild(el);
+      return { el, pos, w: 0, h: 0, op: 0, far };
+    };
+    this.captions = [
+      caption('וְרֹאשׁוֹ מַגִּיעַ הַשָּׁמָיְמָה<span class="v">בראשית כח, יב</span>', new THREE.Vector3(0, this.L.top + 1.0, 0), 3.2),
+      caption('סֻלָּם מֻצָּב אַרְצָה', new THREE.Vector3(0, this.L.base + 0.05, 0), 3.2),
+    ];
     this.focusTag = document.createElement('div');
     this.focusTag.className = 'label plane';
     this.labelsEl.appendChild(this.focusTag);
@@ -351,14 +536,14 @@ export class PrayerWorld {
 
   measureLabels(): void {
     for (const l of this.nodeLabels) { l.w = l.el.offsetWidth; l.h = l.el.offsetHeight; }
-    for (const r of this.regionLabels) { r.w = r.el.offsetWidth; r.h = r.el.offsetHeight; }
+    for (const r of [...this.regionLabels, ...this.worldLabels, ...this.captions]) { r.w = r.el.offsetWidth; r.h = r.el.offsetHeight; }
   }
 
   setPreviews(previews: Record<string, string>): void {
     this.previews = previews;
-    const old = this.globeMat.uniforms.uDust.value as THREE.Texture | null;
-    this.globeMat.uniforms.uDust.value = makeDustTexture(this.world, previews, this.preset.dustWidth);
-    this.globeMat.uniforms.uHasDust.value = 1;
+    const old = this.pillarMat.uniforms.uWords.value as THREE.Texture | null;
+    this.pillarMat.uniforms.uWords.value = makePillarTexture(this.world, previews, { bottom: TABLE_Y + 0.12, top: this.L.top + 0.12, radius: PILLAR_R }, Math.min(2048, this.preset.dustWidth / 2));
+    this.pillarMat.uniforms.uHas.value = 1;
     old?.dispose();
     for (const t of this.tiles.values()) this.disposeTile(t);
     this.tiles.clear();
@@ -381,7 +566,7 @@ export class PrayerWorld {
     this.routeNusach = nusach;
     this.stopIndex = -1;
     if (this.routeGroup) {
-      this.globeGroup.remove(this.routeGroup);
+      this.ladder.remove(this.routeGroup);
       this.routeGroup.traverse((o) => {
         const m = o as THREE.Mesh;
         m.geometry?.dispose();
@@ -399,57 +584,56 @@ export class PrayerWorld {
 
   private stopPoint(i: number): THREE.Vector3 {
     const s = this.route!.stops[i];
-    const node = this.nodes[this.nodeIndex.get(s.n)!];
-    if (s.occTotal <= 1) return llToVec(node.lat, node.lon, NODE_R);
-    const { north, east, up } = frameAt(node.lat, node.lon);
-    const ang = ((s.occ - 1) / s.occTotal) * Math.PI * 2 - Math.PI / 2;
-    return up.clone().addScaledVector(east, Math.cos(ang) * 0.016).addScaledVector(north, Math.sin(ang) * 0.016).normalize().multiplyScalar(NODE_R);
+    const p = this.nodePos[this.nodeIndex.get(s.n)!].clone();
+    if (s.occTotal <= 1) return p;
+    const n = this.nodes[this.nodeIndex.get(s.n)!];
+    const ang = ((s.occ - 1) / s.occTotal) * Math.PI * 2;
+    const tangent = new THREE.Vector3(Math.cos(n.a * D2R), 0, -Math.sin(n.a * D2R));
+    return p.addScaledVector(tangent, Math.cos(ang) * 0.02).add(new THREE.Vector3(0, Math.sin(ang) * 0.02, 0)).addScaledVector(radialAt(n.a), 0.01);
   }
 
   private buildRoute(route: Route, nusach: string): void {
     const g = new THREE.Group();
     const stopPts = route.stops.map((_, i) => this.stopPoint(i));
     const pts: THREE.Vector3[] = [];
+    const cols: number[] = [];
+    const up = new THREE.Color('#c9f6ff'), down = new THREE.Color('#ffc46b'), level = new THREE.Color('#8fd6ff');
     for (let i = 0; i < stopPts.length - 1; i++) {
       const a = stopPts[i], b = stopPts[i + 1];
-      const ang = angleBetween(a, b);
-      const lift = Math.min(0.075, 0.008 + ang * 0.06) * (1 + (i % 3) * 0.25);
-      const seg = ang < 1e-4 ? [a.clone(), b.clone()] : arcPoints(a, b, { segments: 56, lift, base: NODE_R });
+      const seg = a.distanceTo(b) < 1e-4 ? [a.clone(), b.clone()] : this.arc(a, b, 1 + (i % 3) * 0.15);
+      const dy = b.y - a.y;
+      const c = dy > 0.12 ? up : dy < -0.12 ? down : level;
       if (pts.length) seg.shift();
-      pts.push(...seg);
+      for (const p of seg) { pts.push(p); cols.push(c.r, c.g, c.b); }
     }
     this.routePts = pts;
     if (pts.length >= 2) {
       const flat = pts.flatMap((p) => [p.x, p.y, p.z]);
       const under = new LineGeometry();
       under.setPositions(flat);
-      const glow = new Line2(under, this.lineMat('#5fe0ff', 5, { opacity: 0.07 }));
+      under.setColors(cols);
+      const glowMat = this.lineMat('#ffffff', 5, { opacity: 0.08 });
+      glowMat.vertexColors = true;
+      const glow = new Line2(under, glowMat);
       glow.computeLineDistances();
       const over = new LineGeometry();
       over.setPositions(flat);
-      this.routeMat = this.lineMat('#c9f6ff', 2, { dashed: true, dashSize: 0.022, gapSize: 0.014, opacity: 0.9 });
+      over.setColors(cols);
+      this.routeMat = this.lineMat('#ffffff', 2, { dashed: true, dashSize: 0.03, gapSize: 0.018, opacity: 0.92 });
+      this.routeMat.vertexColors = true;
       const line = new Line2(over, this.routeMat);
       line.computeLineDistances();
       glow.renderOrder = line.renderOrder = 4;
       g.add(glow, line);
 
-      const cc = document.createElement('canvas');
-      cc.width = cc.height = 64;
-      const x = cc.getContext('2d')!;
-      const gr = x.createRadialGradient(32, 32, 0, 32, 32, 32);
-      gr.addColorStop(0, 'rgba(255,255,255,1)');
-      gr.addColorStop(0.25, 'rgba(160,240,255,0.85)');
-      gr.addColorStop(1, 'rgba(95,224,255,0)');
-      x.fillStyle = gr;
-      x.fillRect(0, 0, 64, 64);
-      this.comet = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cc), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+      this.comet = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture([[0, 'rgba(255,255,255,1)'], [0.25, 'rgba(160,240,255,0.85)'], [1, 'rgba(95,224,255,0)']]), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
       this.comet.renderOrder = 5;
       g.add(this.comet);
       this.routeCum = [0];
       for (let i = 1; i < pts.length; i++) this.routeCum.push(this.routeCum[i - 1] + pts[i].distanceTo(pts[i - 1]));
     }
     this.routeGroup = g;
-    this.globeGroup.add(g);
+    this.ladder.add(g);
 
     route.stops.forEach((s, i) => {
       const el = document.createElement('div');
@@ -457,7 +641,7 @@ export class PrayerWorld {
       el.className = 'badge' + (s.omit ? ' omit' : off ? ' off' : '');
       el.textContent = String(i + 1);
       this.labelsEl.appendChild(el);
-      this.badges.push({ el, pos: stopPts[i].clone().multiplyScalar(1.002), i });
+      this.badges.push({ el, pos: stopPts[i].clone(), i });
     });
   }
 
@@ -484,124 +668,147 @@ export class PrayerWorld {
     st.needsUpdate = true;
     for (const line of this.relLines) {
       const { from, to } = line.userData as { from: string; to: string };
-      let op = this.relView ? 0.2 : 0;
-      if (this.route) op = this.relView && onRoute.has(from) && onRoute.has(to) ? 0.7 : 0;
+      let op = this.relView ? 0.16 : 0;
+      if (this.route) op = this.relView && onRoute.has(from) && onRoute.has(to) ? 0.55 : 0;
       const focusId = cur || this.selectedId;
       if (focusId && (from === focusId || to === focusId)) op = 0.95;
       (line.material as LineMaterial).opacity = op;
       line.visible = op > 0;
     }
-    // focus beam on the selected prayer
     const fid = cur || this.selectedId;
     if (fid) {
-      const n = this.nodes[this.nodeIndex.get(fid)!];
-      const { up } = frameAt(n.lat, n.lon);
-      this.beam.position.copy(up.clone().multiplyScalar(1.001));
-      this.beam.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), up);
+      const i = this.nodeIndex.get(fid)!;
+      this.beam.position.copy(this.nodePos[i]);
       this.beam.visible = true;
       this.beam.userData.id = fid;
-    } else this.beam.visible = false;
+      this.pillarMat.uniforms.uSel.value.set(this.nodes[i].a * D2R, this.nodePos[i].y, 1);
+    } else {
+      this.beam.visible = false;
+      this.pillarMat.uniforms.uSel.value.z = 0;
+    }
   }
 
   // ───────────────────────────── camera ─────────────────────────────
-  get focusLL(): { lat: number; lon: number } { return vecToLL(this.focus); }
+  /** distance that frames the whole ladder, from its foot to the light above it, in the free area between panels */
+  homeD(): number {
+    const fov = this.camera.fov * D2R;
+    const freeH = Math.max(0.35, (this.height - this.insets.top - this.insets.bottom) / this.height);
+    const freeW = Math.max(0.35, (this.width - this.insets.left - this.insets.right) / this.width);
+    const h = this.L.top + 1.5 - TABLE_Y;
+    const byH = h / 2 / Math.tan(fov / 2) / freeH;
+    const byW = 4.8 / 2 / Math.tan(fov / 2) / (this.camera.aspect * freeW);
+    return THREE.MathUtils.clamp(Math.max(byH, byW) * 1.18, 4, MAX_D);
+  }
 
-  flyTo(lat: number, lon: number, alt = 0.32, opts: { duration?: number } = {}): Promise<void> {
-    const to = llToVec(lat, lon);
-    const from = this.focus.clone();
-    const ang = angleBetween(from, to);
-    const a0 = this.alt, a1 = THREE.MathUtils.clamp(alt, MIN_ALT, MAX_ALT);
+  /** close up the camera looks down onto the rungs (like down a stair); far away, level with the ladder */
+  private elevation(d: number): number { return THREE.MathUtils.lerp(34, 7, smoothstep(0.6, 5, d)) * D2R; }
+
+  flyTo(to: View, opts: { duration?: number } = {}): Promise<void> {
+    const from: View = { t: this.view.t.clone(), az: this.view.az, d: this.view.d };
+    to = { t: to.t.clone(), az: from.az + angleDelta(from.az / D2R, to.az / D2R) * D2R, d: THREE.MathUtils.clamp(to.d, MIN_D, MAX_D) };
     this.flight?.resolve();
+    this.vel.az = this.vel.y = 0;
     if (this.reduceMotion) {
-      this.focus.copy(to);
-      this.alt = a1;
+      this.view = to;
       this.flight = null;
       return Promise.resolve();
     }
-    const d = opts.duration ?? THREE.MathUtils.clamp(900 + ang * 900 + Math.abs(Math.log(a1 / a0)) * 300, 900, 2600);
-    const peak = Math.max(a0, a1, Math.min(2.2, ang * 1.15));
-    return new Promise((resolve) => {
-      this.flight = { from, to, a0, a1, peak, t0: performance.now(), d, resolve };
-      this.vel.x = this.vel.y = 0;
-    });
+    const travel = from.t.distanceTo(to.t) + Math.abs(to.az - from.az) * 0.6;
+    const dur = opts.duration ?? THREE.MathUtils.clamp(900 + travel * 380 + Math.abs(Math.log(to.d / from.d)) * 260, 900, 2600);
+    const peak = Math.max(from.d, to.d, Math.min(this.homeD() * 0.6, travel * 0.9));
+    return new Promise((resolve) => { this.flight = { from, to, peak, t0: performance.now(), dur, resolve }; });
   }
 
-  flyToNode(id: string, alt = 0.3): Promise<void> {
-    const n = this.nodes[this.nodeIndex.get(id)!];
-    if (!n) return Promise.resolve();
-    return this.flyTo(n.lat - Math.min(1.6, alt * 3.2), n.lon, alt);
+  flyHome(opts: { duration?: number } = {}): Promise<void> {
+    return this.flyTo({ t: new THREE.Vector3(0, this.midY, 0), az: this.view.az, d: this.homeD() }, opts);
+  }
+
+  flyToNode(id: string, d = 0.46): Promise<void> {
+    const i = this.nodeIndex.get(id);
+    if (i == null) return Promise.resolve();
+    const n = this.nodes[i];
+    const t = this.nodePos[i].clone().addScaledVector(radialAt(n.a), 0.03).add(new THREE.Vector3(0, -0.035, 0));
+    return this.flyTo({ t, az: n.a * D2R, d });
+  }
+
+  flyToRegion(id: string): Promise<void> {
+    const r = this.world.regionMap.get(id);
+    if (!r) return Promise.resolve();
+    return this.flyTo({ t: cyl(r.a, 0.7, (this.L.base + this.L.top) / 2), az: r.a * D2R, d: this.homeD() * 0.72 });
   }
 
   overview(): Promise<void> {
-    if (this.route) {
-      const vs = this.route.stops.map((s) => this.nodePos[this.nodeIndex.get(s.n)!]);
-      const c = vs.reduce((acc, v) => acc.add(v), new THREE.Vector3()).normalize();
-      const spread = Math.max(...vs.map((v) => angleBetween(v, c)));
-      const ll = vecToLL(c);
-      return this.flyTo(ll.lat, ll.lon, THREE.MathUtils.clamp(0.75 + spread * 1.9, 0.9, HOME_ALT));
+    if (!this.route) return this.flyHome();
+    const pts = this.route.stops.map((s) => this.nodePos[this.nodeIndex.get(s.n)!]);
+    let sx = 0, sz = 0, y0 = Infinity, y1 = -Infinity;
+    for (const p of pts) {
+      const a = angleOf(p) * D2R;
+      sx += Math.sin(a);
+      sz += Math.cos(a);
+      y0 = Math.min(y0, p.y);
+      y1 = Math.max(y1, p.y);
     }
-    const ll = this.focusLL;
-    return this.flyTo(ll.lat, ll.lon, HOME_ALT);
+    const k = Math.hypot(sx, sz) / pts.length; // 1 = the route keeps to one side of the ladder
+    const az = Math.atan2(sx, sz);
+    const fov = this.camera.fov * D2R;
+    const freeH = Math.max(0.35, (this.height - this.insets.top - this.insets.bottom) / this.height);
+    const d = THREE.MathUtils.clamp(((y1 - y0 + 0.7) / 2 / Math.tan(fov / 2) / freeH) * (1 + (1 - k) * 0.5), 1.6, this.homeD());
+    return this.flyTo({ t: cyl(az / D2R, 0.95 * k, (y0 + y1) / 2), az, d });
   }
 
   zoomBy(f: number): void {
-    this.alt = THREE.MathUtils.clamp(this.alt * f, MIN_ALT, MAX_ALT);
-    this.flight = null;
+    this.view.d = THREE.MathUtils.clamp(this.view.d * f, MIN_D, MAX_D);
+    this.cancelFlight();
     this.touch();
   }
 
-  pan(dxDeg: number, dyDeg: number): void {
-    const { lat, lon } = this.focusLL;
-    this.focus = llToVec(THREE.MathUtils.clamp(lat + dyDeg, -82, 82), lon + dxDeg);
-    this.flight = null;
+  /** orbit around the ladder's axis (radians) and climb (world units) */
+  orbit(dAz: number, dy: number): void {
+    const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), dAz);
+    this.view.t.applyQuaternion(q);
+    this.view.az += dAz;
+    this.view.t.y = THREE.MathUtils.clamp(this.view.t.y + dy, TABLE_Y + 0.1, this.L.top + 0.9);
+    this.cancelFlight();
     this.touch();
   }
+
+  /** stop a camera flight; whoever awaits it carries on (a journey must never hang on an interrupted flight) */
+  private cancelFlight(): void { const f = this.flight; this.flight = null; f?.resolve(); }
 
   setInsets(i: Partial<typeof this.insets>): void { this.insets = { left: 0, right: 0, top: 0, bottom: 0, ...i }; }
   get focusScreen(): { x: number; y: number } { return { x: this.width / 2 - this.viewOff.x, y: this.height / 2 - this.viewOff.y }; }
+  get distance(): number { return this.view.d; }
   private touch(): void { this.lastInteraction = performance.now(); }
+  private unitsPerPx(): number { return (2 * this.view.d * Math.tan((this.camera.fov * D2R) / 2)) / (this.height || 800); }
 
   private updateCamera(): void {
     const f = this.flight;
     if (f) {
-      const t = Math.min(1, (performance.now() - f.t0) / f.d);
+      const t = Math.min(1, (performance.now() - f.t0) / f.dur);
       const e = easeInOutCubic(t);
-      slerpVec(f.from, f.to, e, this.focus);
+      this.view.t.lerpVectors(f.from.t, f.to.t, e);
+      this.view.az = THREE.MathUtils.lerp(f.from.az, f.to.az, e);
       const u = 1 - e;
-      this.alt = u * u * f.a0 + 2 * u * e * f.peak + e * e * f.a1;
+      const ld = u * u * Math.log(f.from.d) + 2 * u * e * Math.log(f.peak) + e * e * Math.log(f.to.d);
+      this.view.d = Math.exp(ld);
       if (t >= 1) { this.flight = null; f.resolve(); }
-    } else if (Math.abs(this.vel.x) + Math.abs(this.vel.y) > 1e-4) {
-      this.pan(this.vel.x, this.vel.y);
-      this.vel.x *= 0.92;
+    } else if (Math.abs(this.vel.az) + Math.abs(this.vel.y) > 1e-5) {
+      this.orbit(this.vel.az, this.vel.y);
+      this.vel.az *= 0.92;
       this.vel.y *= 0.92;
-    } else if (!this.reduceMotion && !this.route && !this.selectedId && !this.dragging && performance.now() - this.lastInteraction > 9000 && this.alt > 1.8) {
-      const { lat, lon } = this.focusLL;
-      this.focus = llToVec(lat, lon - 0.02);
+    } else if (!this.reduceMotion && !this.route && !this.selectedId && !this.dragging && performance.now() - this.lastInteraction > 9000 && this.view.d > 2.5) {
+      this.view.az -= 0.0007;
+      this.view.t.applyAxisAngle(new THREE.Vector3(0, 1, 0), -0.0007);
     }
 
-    // turn the globe so the focus point faces the camera, north up — the stand stays put
-    const elev = THREE.MathUtils.degToRad(THREE.MathUtils.lerp(10, 24, smoothstep(1.2, 4.2, this.alt)));
-    const U0 = new THREE.Vector3(0, Math.sin(elev), Math.cos(elev));
-    const N0 = new THREE.Vector3(0, 1, 0).addScaledVector(U0, -U0.y).normalize();
-    const E0 = new THREE.Vector3().crossVectors(N0, U0);
-    const { lat, lon } = this.focusLL;
-    const fr = frameAt(lat, lon);
-    const B0 = new THREE.Matrix4().makeBasis(E0, N0, U0);
-    const Bf = new THREE.Matrix4().makeBasis(fr.east, fr.north, fr.up);
-    const M = B0.multiply(Bf.transpose());
-    this.globeGroup.quaternion.setFromRotationMatrix(M);
-    this.globeGroup.updateMatrixWorld(true);
-
-    const tilt = THREE.MathUtils.degToRad(30 * smoothstep(1.4, 0.5, this.alt) * (0.35 + 0.65 * smoothstep(0.07, 0.4, this.alt)));
-    const cam = U0.clone().addScaledVector(U0, this.alt * Math.cos(tilt)).addScaledVector(N0, -this.alt * Math.sin(tilt));
-    // never dip under the bench
-    cam.y = Math.max(cam.y, TABLE_Y + 0.25);
+    const { t, az, d } = this.view;
+    const el = this.elevation(d);
+    const cam = new THREE.Vector3(Math.sin(az) * Math.cos(el), Math.sin(el), Math.cos(az) * Math.cos(el)).multiplyScalar(d).add(t);
+    cam.y = Math.max(cam.y, TABLE_Y + 0.12);
     this.camera.position.copy(cam);
-    this.camera.up.copy(N0.clone().multiplyScalar(Math.cos(tilt)).addScaledVector(U0, Math.sin(tilt)).normalize());
-    // at a distance, aim between the globe and its stand so the whole instrument is framed
-    const look = U0.clone().multiplyScalar(1 - smoothstep(1.8, 4.6, this.alt)).add(new THREE.Vector3(0, -0.35 * smoothstep(2.2, 4.6, this.alt), 0));
-    this.camera.lookAt(look);
-    this.camera.near = Math.max(0.002, this.alt * 0.05);
+    this.camera.up.set(0, 1, 0);
+    this.camera.lookAt(t);
+    this.camera.near = Math.max(0.002, d * 0.04);
 
     const k = this.reduceMotion ? 1 : 0.12;
     this.viewOff.x += ((this.insets.right - this.insets.left) / 2 - this.viewOff.x) * k;
@@ -611,16 +818,11 @@ export class PrayerWorld {
     this.camera.updateProjectionMatrix();
     this.camera.updateMatrixWorld();
 
-    const camPos = this.camera.position;
-    (this.globeMat.uniforms.uCam.value as THREE.Vector3).copy(camPos);
-    ((this.atmosphere.material as THREE.ShaderMaterial).uniforms.uCam.value as THREE.Vector3).copy(camPos);
-    this.globeMat.uniforms.uDustK.value = 0.1 + 0.9 * smoothstep(0.15, 1.0, this.alt);
-    // the lacquer glint belongs to the distant product shot; it would wash out close-up reading
-    const shellK = 0.45 * smoothstep(3.0, 4.6, this.alt);
-    (this.shell.material as THREE.MeshPhysicalMaterial).opacity = shellK;
-    this.shell.visible = this.preset.shell && shellK > 0.01;
-    this.nodeMat.uniforms.uAlt.value = this.alt;
-    for (let i = 0; i < this.nodePos.length; i++) this.nodeWorld[i].copy(this.nodePos[i]).applyQuaternion(this.globeGroup.quaternion);
+    (this.pillarMat.uniforms.uCam.value as THREE.Vector3).copy(this.camera.position);
+    CUT.pos.value.copy(this.camera.position);
+    CUT.r.value = d < 1.5 ? THREE.MathUtils.clamp(d * 0.86, 0.1, 0.9) * smoothstep(1.5, 1.1, d) : 0;
+    this.pillarMat.uniforms.uWordsK.value = 0.12 + 0.88 * smoothstep(0.7, 2.2, d);
+    this.nodeMat.uniforms.uD.value = d;
   }
 
   // ───────────────────────────── input ─────────────────────────────
@@ -635,8 +837,8 @@ export class PrayerWorld {
       downAt = { x: e.clientX, y: e.clientY };
       moved = 0;
       this.dragging = true;
-      this.flight = null;
-      this.vel.x = this.vel.y = 0;
+      this.cancelFlight();
+      this.vel.az = this.vel.y = 0;
       if (pointers.size === 2) {
         const [a, b] = [...pointers.values()];
         pinchD = Math.hypot(a.x - b.x, a.y - b.y);
@@ -650,22 +852,21 @@ export class PrayerWorld {
       pointers.set(e.pointerId, cur);
       if (pointers.size === 2) {
         const [a, b] = [...pointers.values()];
-        const d = Math.hypot(a.x - b.x, a.y - b.y);
-        if (pinchD > 0) this.zoomBy(pinchD / d);
-        pinchD = d;
+        const dd = Math.hypot(a.x - b.x, a.y - b.y);
+        if (pinchD > 0) this.zoomBy(pinchD / dd);
+        pinchD = dd;
         moved += 10;
         return;
       }
       const dx = cur.x - prev.x, dy = cur.y - prev.y;
       moved += Math.abs(dx) + Math.abs(dy);
-      const k = this.degPerPx();
-      const lonScale = 1 / Math.max(0.2, Math.cos(THREE.MathUtils.degToRad(this.focusLL.lat)));
-      this.pan(-dx * k * lonScale, dy * k);
+      const [dAz, dY] = this.dragDelta(dx, dy);
+      this.orbit(dAz, dY);
       const now = performance.now();
       const dt = Math.max(8, now - lastMove);
       lastMove = now;
-      this.vel.x = -dx * k * lonScale * (16 / dt);
-      this.vel.y = dy * k * (16 / dt);
+      this.vel.az = dAz * (16 / dt);
+      this.vel.y = dY * (16 / dt);
     });
     const end = (e: PointerEvent) => {
       if (!pointers.has(e.pointerId)) return;
@@ -673,7 +874,7 @@ export class PrayerWorld {
       if (pointers.size < 2) pinchD = 0;
       if (pointers.size === 0) {
         this.dragging = false;
-        if (performance.now() - lastMove > 80 || this.reduceMotion) this.vel.x = this.vel.y = 0;
+        if (performance.now() - lastMove > 80 || this.reduceMotion) this.vel.az = this.vel.y = 0;
         if (moved < 6 && downAt) this.click(e);
       }
     };
@@ -683,20 +884,18 @@ export class PrayerWorld {
     c.addEventListener('wheel', (e) => {
       e.preventDefault();
       const f = Math.exp(e.deltaY * (e.deltaMode === 1 ? 0.05 : 0.0016));
-      const before = this.alt;
+      const at = this.pointAtTargetDepth(e.clientX, e.clientY);
       this.zoomBy(f);
-      if (f < 1) {
-        const hit = this.surfaceAt(e.clientX, e.clientY);
-        if (hit) slerpVec(this.focus.clone(), hit, (1 - this.alt / before) * 0.9, this.focus);
-      }
+      if (f < 1 && at) this.view.t.lerp(at, Math.min(1, (1 - f) * 1.1));
     }, { passive: false });
     c.addEventListener('keydown', (e) => {
-      const k = this.degPerPx() * 60;
+      const step = 60;
       const pick = () => { const id = this.pickCenter(); if (id) this.cb.onSelect?.(id); };
+      const drag = (dx: number, dy: number) => { const [a, y] = this.dragDelta(dx, dy); this.orbit(a, y); };
       const map: Record<string, () => void> = {
-        ArrowLeft: () => this.pan(-k, 0), ArrowRight: () => this.pan(k, 0), ArrowUp: () => this.pan(0, k), ArrowDown: () => this.pan(0, -k),
+        ArrowLeft: () => drag(step, 0), ArrowRight: () => drag(-step, 0), ArrowUp: () => drag(0, step), ArrowDown: () => drag(0, -step),
         '+': () => this.zoomBy(0.8), '=': () => this.zoomBy(0.8), '-': () => this.zoomBy(1.25), _: () => this.zoomBy(1.25),
-        PageUp: () => this.zoomBy(0.8), PageDown: () => this.zoomBy(1.25), Enter: pick, ' ': pick,
+        PageUp: () => drag(0, step * 4), PageDown: () => drag(0, -step * 4), Home: () => void this.flyHome(), Enter: pick, ' ': pick,
       };
       if (map[e.key]) {
         e.preventDefault();
@@ -706,9 +905,12 @@ export class PrayerWorld {
     });
   }
 
-  private degPerPx(): number {
-    const span = 2 * this.alt * Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2));
-    return Math.min(0.4, (span / (this.height || 800)) * (180 / Math.PI));
+  /** screen drag → (azimuth change, climb). Close up, the ladder slides under the finger; far away it turns. */
+  private dragDelta(dx: number, dy: number): [number, number] {
+    const upp = this.unitsPerPx();
+    const rT = Math.hypot(this.view.t.x, this.view.t.z);
+    const dAz = -dx * Math.min(0.006, upp / Math.max(0.3, rT));
+    return [dAz, dy * upp];
   }
 
   private ndc(x: number, y: number): THREE.Vector2 {
@@ -716,19 +918,22 @@ export class PrayerWorld {
     return new THREE.Vector2(((x - r.left) / r.width) * 2 - 1, -((y - r.top) / r.height) * 2 + 1);
   }
 
-  /** Surface point under the cursor, in the globe's own frame. */
-  private surfaceAt(x: number, y: number): THREE.Vector3 | null {
+  private pointAtTargetDepth(x: number, y: number): THREE.Vector3 | null {
     const ray = new THREE.Raycaster();
     ray.setFromCamera(this.ndc(x, y), this.camera);
-    const hit = ray.intersectObject(this.globe)[0];
-    return hit ? hit.point.clone().applyQuaternion(this.globeGroup.quaternion.clone().invert()).normalize() : null;
+    const fwd = this.camera.getWorldDirection(new THREE.Vector3());
+    const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(fwd, this.view.t);
+    const hit = ray.ray.intersectPlane(plane, new THREE.Vector3());
+    if (!hit) return null;
+    hit.y = THREE.MathUtils.clamp(hit.y, TABLE_Y + 0.1, this.L.top + 0.9);
+    return hit;
   }
 
   private nearestNode(x: number, y: number, maxPx = 22): string | null {
     const r = this.canvas.getBoundingClientRect();
     let best: string | null = null, bd = maxPx;
     this.proj.forEach((p, i) => {
-      if (!p?.visible) return;
+      if (!p?.visible || p.facing < 0.3) return;
       const d = Math.hypot(p.x + r.left - x, p.y + r.top - y);
       if (d < bd) { bd = d; best = this.nodes[i].id; }
     });
@@ -764,19 +969,23 @@ export class PrayerWorld {
     if (have) return have;
     const words = this.previews[n.id];
     const color = this.world.regionMap.get(n.region)!.color;
-    const region = this.world.regionMap.get(n.region)!.name;
-    const canvas = makeMedallion(n.title, region, words || n.d, color, this.preset.tileSize);
+    const meta = `${this.world.regionMap.get(n.region)!.name} · ${this.world.worldMap.get(n.world)!.he}`;
+    const canvas = makeMedallion(n.title, meta, words || n.d, color, this.preset.tileSize);
     const tex = new THREE.CanvasTexture(canvas);
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
-    const size = 0.078;
-    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(size, size), new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0, depthWrite: false, toneMapped: false }));
-    const { up, north, east } = frameAt(n.lat, n.lon);
-    mesh.position.copy(up.clone().multiplyScalar(1.0025).addScaledVector(north, -size * 0.5 - 0.004));
-    mesh.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(east, north, up));
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(TILE, TILE), new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0, depthWrite: false, toneMapped: false }));
+    // the medallion leans back from the rung toward a camera looking down the steps
+    const radial = radialAt(n.a);
+    const up = new THREE.Vector3(0, 1, 0);
+    const N = radial.clone().multiplyScalar(Math.cos(TILT)).addScaledVector(up, Math.sin(TILT));
+    const Y = up.clone().multiplyScalar(Math.cos(TILT)).addScaledVector(radial, -Math.sin(TILT));
+    const X = new THREE.Vector3().crossVectors(Y, N);
+    mesh.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(X, Y, N));
+    mesh.position.copy(this.nodePos[i]).addScaledVector(Y, -(TILE * 0.5 + 0.012)).addScaledVector(N, 0.004);
     mesh.renderOrder = 1;
     mesh.userData = { id: n.id };
-    this.globeGroup.add(mesh);
+    this.ladder.add(mesh);
     const t = { mesh, tex, last: performance.now() };
     this.tiles.set(n.id, t);
     if (this.tiles.size > this.preset.maxTiles) {
@@ -788,7 +997,7 @@ export class PrayerWorld {
   }
 
   private disposeTile(t: Tile): void {
-    this.globeGroup.remove(t.mesh);
+    this.ladder.remove(t.mesh);
     t.mesh.geometry.dispose();
     (t.mesh.material as THREE.Material).dispose();
     t.tex.dispose();
@@ -805,16 +1014,16 @@ export class PrayerWorld {
     this.pipeline?.setSize(w, h);
     const pr = this.renderer.getPixelRatio();
     const res = new THREE.Vector2(w * pr, h * pr);
-    this.relLines.forEach((l) => (l.material as LineMaterial).resolution.copy(res));
-    this.routeGroup?.traverse((o) => { const m = (o as Line2).material as LineMaterial | undefined; m?.resolution?.copy(res); });
+    this.ladder.traverse((o) => { const m = (o as Line2).material as LineMaterial | undefined; if (m && 'resolution' in m) m.resolution.copy(res); });
     if (this.nodeMat) this.nodeMat.uniforms.uPR.value = pr;
+    if (this.angelMat) this.angelMat.uniforms.uPR.value = pr;
     if (this.motes) (this.motes.material as THREE.ShaderMaterial).uniforms.uPR.value = pr;
   }
 
   setReduceMotion(v: boolean): void {
     this.reduceMotion = v;
     if (this.nodeMat) this.nodeMat.uniforms.uMotion.value = v ? 0 : 1;
-    if (v) this.vel.x = this.vel.y = 0;
+    if (v) this.vel.az = this.vel.y = 0;
   }
 
   private frame(): void {
@@ -823,38 +1032,59 @@ export class PrayerWorld {
     const dt = Math.min(0.05, this.timer.getDelta());
     this.time += dt;
     this.trackFps(dt);
+    if (!this.world) { this.pipeline.render(dt); return; }
     this.updateCamera();
     const t = this.reduceMotion ? 0 : this.time;
-    if (this.nodeMat) this.nodeMat.uniforms.uTime.value = this.time;
+    const d = this.view.d;
+    this.nodeMat.uniforms.uTime.value = this.time;
+    this.pillarMat.uniforms.uTime.value = t;
     if (this.motes) (this.motes.material as THREE.ShaderMaterial).uniforms.uTime.value = t;
     this.beamMat.uniforms.uTime.value = t;
-    const beamTarget = this.beam.visible ? 0.55 + 0.45 * smoothstep(1.6, 0.4, this.alt) : 0;
+    const beamTarget = this.beam.visible ? 0.75 * smoothstep(0.5, 1.4, d) + 0.15 : 0; // the medallion takes over close up
     this.beamMat.uniforms.uOp.value += (beamTarget - this.beamMat.uniforms.uOp.value) * 0.1;
     ((this.beam.children[1] as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = this.beamMat.uniforms.uOp.value;
-    this.beam.scale.setScalar(THREE.MathUtils.clamp(this.alt * 1.4, 0.35, 2.2));
+    this.beam.scale.setScalar(THREE.MathUtils.clamp(d * 0.55, 0.25, 2.2));
+    this.updateAngels(dt);
+    this.heaven.children[0].scale.setScalar(3.2 + (this.reduceMotion ? 0 : Math.sin(this.time * 0.6) * 0.15));
+    for (const m of this.railMats) m.opacity = 0.18 + 0.2 * smoothstep(0.6, 3, d);
+    const ghost = 0.16 + 0.84 * smoothstep(0.75, 1.5, d);
+    for (const m of this.metalMats) { m.opacity = ghost; m.depthWrite = ghost > 0.95; }
 
     if (this.routeMat) {
-      if (!this.reduceMotion) this.routeMat.dashOffset = -this.time * 0.06;
-      this.routeMat.opacity = 0.3 + 0.6 * smoothstep(0.2, 0.85, this.alt);
+      if (!this.reduceMotion) this.routeMat.dashOffset = -this.time * 0.08;
+      this.routeMat.opacity = 0.45 + 0.5 * smoothstep(0.25, 1.2, d);
     }
     if (this.comet && this.routePts.length > 1) {
       const total = this.routeCum[this.routeCum.length - 1];
-      const d = this.reduceMotion ? 0 : (this.time * Math.max(0.06, total / 22)) % total;
+      const dd = this.reduceMotion ? 0 : (this.time * Math.max(0.08, total / 24)) % total;
       let i = 1;
-      while (i < this.routeCum.length - 1 && this.routeCum[i] < d) i++;
+      while (i < this.routeCum.length - 1 && this.routeCum[i] < dd) i++;
       const segLen = this.routeCum[i] - this.routeCum[i - 1] || 1;
-      this.comet.position.copy(this.routePts[i - 1]).lerp(this.routePts[i], (d - this.routeCum[i - 1]) / segLen);
+      this.comet.position.copy(this.routePts[i - 1]).lerp(this.routePts[i], (dd - this.routeCum[i - 1]) / segLen);
       this.comet.visible = !this.reduceMotion;
-      this.comet.scale.setScalar(THREE.MathUtils.clamp(this.alt * 0.035, 0.008, 0.05));
+      this.comet.scale.setScalar(THREE.MathUtils.clamp(d * 0.03, 0.012, 0.09));
     }
 
-    if (this.nodes.length) {
-      this.updateLabels();
-      this.updateTiles();
-    }
-    this.pipeline.bloom.intensity = (this.route ? 0.6 : 0.85) + 0.3 * smoothstep(0.4, 2.0, this.alt);
+    this.updateLabels();
+    this.updateTiles();
+    this.pipeline.bloom.intensity = (this.route ? 0.6 : 0.8) + 0.25 * smoothstep(0.6, 3.0, d);
     this.pipeline.render(dt);
-    this.cb.onFrame?.(this.alt);
+    this.cb.onFrame?.(d);
+  }
+
+  private updateAngels(dt: number): void {
+    const U = this.L.turns * 360;
+    const pos = this.angelPoints.geometry.getAttribute('position') as THREE.BufferAttribute;
+    const alpha = this.angelPoints.geometry.getAttribute('alpha') as THREE.BufferAttribute;
+    this.angels.forEach((a, i) => {
+      if (!this.reduceMotion) a.u = (a.u + a.dir * a.speed * dt + U) % U;
+      const p = cyl(a.u % 360, a.r, this.helixY(a.u) + 0.045);
+      pos.setXYZ(i, p.x, p.y, p.z);
+      const edge = Math.min(a.u, U - a.u) / 40;
+      alpha.setX(i, this.reduceMotion ? 0 : Math.min(1, edge) * 0.9);
+    });
+    pos.needsUpdate = true;
+    alpha.needsUpdate = true;
   }
 
   private trackFps(dt: number): void {
@@ -875,47 +1105,58 @@ export class PrayerWorld {
     return out as Proj;
   }
 
-  private updateLabels(): void {
+  /** 1 on the side of the ladder facing the camera, 0 behind the pillar */
+  private facing(p: THREE.Vector3): number {
     const cam = this.camera.position;
-    const alt = this.alt, W = this.width, H = this.height;
+    const ch = Math.hypot(cam.x, cam.z) || 1, ph = Math.hypot(p.x, p.z) || 1;
+    const dot = (cam.x * p.x + cam.z * p.z) / (ch * ph);
+    const over = smoothstep(0.35, 1.2, (cam.y - p.y) / Math.max(0.5, ch)); // seen from above, the far side shows too
+    return Math.max(smoothstep(-0.3, 0.15, dot), over * 0.6);
+  }
+
+  private place(el: HTMLElement, op: number, x: number, y: number): void {
+    el.style.opacity = op < 0.01 ? '0' : op.toFixed(3);
+    el.style.transform = op < 0.01 ? 'translate3d(-9999px,0,0)' : `translate3d(${x.toFixed(1)}px, ${y.toFixed(1)}px, 0)`;
+  }
+
+  private updateLabels(): void {
+    const d = this.view.d, W = this.width, H = this.height;
     const fc = this.focusScreen;
-    const cands: { i: number; p: Proj; vis: number; prio: number; scale?: number }[] = [];
+    const ease = this.reduceMotion ? 1 : 0.2;
+    const cands: { i: number; p: Proj; vis: number; prio: number }[] = [];
     this.nodes.forEach((n, i) => {
-      const pos = this.nodeWorld[i];
-      const facing = pos.dot(cam) - 1;
+      const pos = this.nodePos[i];
       const p = (this.proj[i] ||= { x: 0, y: 0, z: 0, visible: false, facing: 0 });
       this.project(pos, p);
-      p.visible = facing > 0 && p.z < 1 && p.x > -50 && p.x < W + 50 && p.y > -50 && p.y < H + 50;
-      p.facing = smoothstep(0, 0.06 * Math.max(0.4, alt), facing);
+      p.facing = this.facing(pos);
+      p.visible = p.z < 1 && p.x > -50 && p.x < W + 50 && p.y > -50 && p.y < H + 50 && pos.distanceTo(this.camera.position) > this.camera.near * 2;
       if (!p.visible) return;
       const l = this.nodeLabels[i];
-      const need = n.imp >= 3 ? 3.4 : n.imp === 2 ? 1.45 : 0.85;
-      let vis = smoothstep(need + 0.25, need - 0.15, alt);
-      if (l.state >= 2) vis = Math.max(vis, smoothstep(2.8, 1.6, alt));
+      const need = n.imp >= 3 ? 6.2 : n.imp === 2 ? 3.0 : 1.7;
+      let vis = smoothstep(need + 0.4, need - 0.3, d);
+      if (l.state >= 2) vis = Math.max(vis, smoothstep(5.5, 3.5, d));
       if (l.state >= 3) vis = 1;
       if (l.state === 1) vis *= 0.45;
+      vis *= p.facing;
       const cd = Math.hypot(p.x - fc.x, p.y - fc.y) / Math.hypot(W / 2, H / 2);
-      const prio = (l.state >= 3 ? 100 : 0) + (l.state === 2 ? 20 : 0) + n.imp * 5 - cd * 6 + (this.hoverId === n.id ? 50 : 0);
-      if (vis * p.facing > 0.02) cands.push({ i, p, vis: vis * p.facing, prio });
+      const prio = (l.state >= 3 ? 100 : 0) + (l.state === 2 ? 20 : 0) + n.imp * 5 - cd * 6 - (1 - p.facing) * 8 + (this.hoverId === n.id ? 50 : 0);
+      if (vis > 0.02) cands.push({ i, p, vis, prio });
     });
     cands.sort((a, b) => b.prio - a.prio);
     const placed: { x0: number; x1: number; y0: number; y1: number }[] = [];
-    const shown = new Set<number>();
-    const scale = THREE.MathUtils.clamp(1.12 - alt * 0.1, 0.85, 1.15);
+    const shown = new Map<number, number>();
+    const scale = THREE.MathUtils.clamp(1.1 - d * 0.04, 0.85, 1.12);
     for (const c of cands) {
       const l = this.nodeLabels[c.i];
       const w = (l.w || 80) * scale, h = (l.h || 22) * scale;
       const box = { x0: c.p.x - w / 2 - 4, x1: c.p.x + w / 2 + 4, y0: c.p.y - h - 14, y1: c.p.y - 8 };
       if (c.prio < 90 && placed.some((b) => b.x0 < box.x1 && b.x1 > box.x0 && b.y0 < box.y1 && b.y1 > box.y0)) continue;
       placed.push(box);
-      shown.add(c.i);
-      c.scale = scale;
+      shown.set(c.i, c.vis);
     }
-    const cmap = new Map(cands.map((c) => [c.i, c]));
     this.nodeLabels.forEach((l, i) => {
-      const c = cmap.get(i);
-      const target = c && shown.has(i) ? c.vis : 0;
-      l.op += (target - l.op) * (this.reduceMotion ? 1 : 0.2);
+      const target = shown.get(i) ?? 0;
+      l.op += (target - l.op) * ease;
       if (l.op < 0.01) {
         if (l.shown) { l.el.style.opacity = '0'; l.el.style.transform = 'translate3d(-9999px,0,0)'; l.shown = false; }
         return;
@@ -923,26 +1164,37 @@ export class PrayerWorld {
       l.shown = true;
       const p = this.proj[i];
       l.el.style.opacity = l.op.toFixed(3);
-      l.el.style.transform = `translate3d(${(p.x - (l.w || 0) / 2).toFixed(1)}px, ${(p.y - (l.h || 0) - 10).toFixed(1)}px, 0) scale(${(c?.scale || 1).toFixed(3)})`;
+      l.el.style.transform = `translate3d(${(p.x - (l.w || 0) / 2).toFixed(1)}px, ${(p.y - (l.h || 0) - 10).toFixed(1)}px, 0) scale(${scale.toFixed(3)})`;
     });
 
+    // region names on the bench, around the ladder's foot, like a compass rose
     for (const r of this.regionLabels) {
-      const wp = r.pos.clone().applyQuaternion(this.globeGroup.quaternion);
-      const facing = wp.dot(cam) - 1.01;
+      const wp = cyl(r.a, 2.28, TABLE_Y + 0.03);
       const p = this.project(wp);
-      const vis = facing > 0 && !this.route ? smoothstep(0, 0.25, facing) * smoothstep(0.55, 1.25, alt) : 0;
-      r.op += (vis - r.op) * (this.reduceMotion ? 1 : 0.15);
-      r.el.style.opacity = r.op < 0.01 ? '0' : r.op.toFixed(3);
-      r.el.style.transform = r.op < 0.01 ? 'translate3d(-9999px,0,0)' : `translate3d(${(p.x - r.w / 2).toFixed(1)}px, ${(p.y - r.h / 2).toFixed(1)}px, 0)`;
+      const vis = !this.route ? this.facing(wp) * smoothstep(1.6, 3.2, d) : 0;
+      r.op += (vis - r.op) * ease;
+      this.place(r.el, r.op, p.x - r.w / 2, p.y - r.h / 2);
+    }
+    // the four worlds, as a scale beside the ladder (always on the camera's left)
+    const side = this.view.az / D2R - 64;
+    for (const w of this.worldLabels) {
+      const wp = cyl(side, this.L.rOut + 0.42, w.y);
+      const p = this.project(wp);
+      const vis = smoothstep(0.9, 1.8, d) * (p.z < 1 ? 1 : 0);
+      w.op += (vis - w.op) * ease;
+      this.place(w.el, w.op, p.x - w.w / 2, p.y - w.h / 2);
+    }
+    for (const c of this.captions) {
+      const p = this.project(c.pos);
+      const vis = !this.route ? smoothstep(c.far, c.far + 1.5, d) : 0;
+      c.op += (vis - c.op) * ease;
+      this.place(c.el, c.op, p.x - c.w / 2, p.y - c.h / 2);
     }
 
     for (const b of this.badges) {
-      const wp = b.pos.clone().applyQuaternion(this.globeGroup.quaternion);
-      const facing = wp.dot(cam) - 1;
-      const p = this.project(wp);
-      const vis = facing > 0 ? smoothstep(0, 0.04, facing) * smoothstep(3.2, 1.2, alt) : 0;
-      b.el.style.opacity = vis.toFixed(3);
-      b.el.style.transform = vis > 0.01 ? `translate3d(${(p.x + 4).toFixed(1)}px, ${(p.y + 2).toFixed(1)}px, 0)` : 'translate3d(-9999px,0,0)';
+      const p = this.project(b.pos);
+      const vis = this.facing(b.pos) * smoothstep(5.5, 2.4, d) * (p.z < 1 ? 1 : 0);
+      this.place(b.el, vis, p.x + 4, p.y + 2);
     }
 
     // focus tag at the top of the light shaft
@@ -950,31 +1202,31 @@ export class PrayerWorld {
     if (fid) {
       const i = this.nodeIndex.get(fid)!;
       const n = this.nodes[i];
-      const top = this.nodePos[i].clone().normalize().multiplyScalar(1.004 + 0.42 * this.beam.scale.x * 0.92).applyQuaternion(this.globeGroup.quaternion);
-      const facing = this.nodeWorld[i].dot(cam) - 1;
+      const top = this.nodePos[i].clone().add(new THREE.Vector3(0, 0.36 * this.beam.scale.x * 0.92, 0));
       const p = this.project(top);
-      const occ = this.route && this.stopIndex >= 0 ? `${this.stopIndex + 1}/${this.route.stops.length}` : this.world.regionMap.get(n.region)!.name;
+      const occ = this.route && this.stopIndex >= 0 ? `${this.stopIndex + 1}/${this.route.stops.length}` : this.world.worldMap.get(n.world)!.he;
       const html = `בפוקוס <span class="v">${occ}</span>`;
       if (this.focusTag.dataset.html !== html) { this.focusTag.innerHTML = html; this.focusTag.dataset.html = html; }
-      const vis = facing > 0 ? this.beamMat.uniforms.uOp.value * smoothstep(0.08, 0.3, alt) : 0;
+      const vis = this.beamMat.uniforms.uOp.value * smoothstep(0.1, 0.3, d) * this.facing(this.nodePos[i]);
       this.focusTag.style.opacity = vis.toFixed(3);
       this.focusTag.style.transform = `translate3d(${(p.x - this.focusTag.offsetWidth / 2).toFixed(1)}px, ${(p.y - 26).toFixed(1)}px, 0)`;
     } else this.focusTag.style.opacity = '0';
   }
 
   private updateTiles(): void {
-    const global = smoothstep(0.62, 0.36, this.alt);
+    const global = smoothstep(1.3, 0.75, this.view.d);
     const want = new Set<string>();
     if (global > 0.01) {
       const fc = this.focusScreen, W = this.width, H = this.height;
       const list: { i: number; d: number }[] = [];
       this.nodes.forEach((_, i) => {
         const p = this.proj[i];
-        if (!p?.visible) return;
+        if (!p?.visible || p.facing < 0.5) return;
         const d = Math.hypot(p.x - fc.x, p.y - fc.y) / Math.hypot(W / 2, H / 2);
         if (d < 0.95) list.push({ i, d });
       });
       list.sort((a, b) => a.d - b.d);
+      const cam = this.camera.position;
       for (const { i, d } of list.slice(0, this.preset.visibleTiles)) {
         want.add(this.nodes[i].id);
         const t = this.tileFor(i);
@@ -984,6 +1236,7 @@ export class PrayerWorld {
         const m = t.mesh.material as THREE.MeshBasicMaterial;
         m.opacity += (target - m.opacity) * (this.reduceMotion ? 1 : 0.12);
         t.mesh.visible = m.opacity > 0.01;
+        t.mesh.renderOrder = 1 + Math.round(10 - Math.min(10, t.mesh.position.distanceTo(cam) * 4));
       }
     }
     for (const [id, t] of this.tiles) {

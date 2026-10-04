@@ -8,6 +8,7 @@ import { REGIONS, NODES } from '../content/catalog.mjs';
 import { ROUTES } from '../content/routes.mjs';
 import { NUSACHIM, NUSACH_IDS } from '../content/nusachim.mjs';
 import { BOOKS } from '../content/books.mjs';
+import { WORLDS, PLACEMENT, ARI, SECTOR_ORDER, LADDER, LADDER_SOURCES } from '../content/ladder.mjs';
 import { resolveRef, plain } from './lib/sefaria.mjs';
 
 const OUT = new URL('../public/data/', import.meta.url).pathname;
@@ -67,63 +68,49 @@ function resolveTextId(refs, context) {
 function textSummary(hash) {
   if (!hash) return null;
   const t = texts.get(hash);
-  return { id: hash, words: t.words, excerpt: t.excerpt, src: [...new Set(t.parts.map((p) => p.bookHe))].join(' · ') };
+  // url: a direct link to the passage at its source (Sefaria), for the one-click "מקור" links in the panels
+  return { id: hash, words: t.words, excerpt: t.excerpt, src: [...new Set(t.parts.map((p) => p.bookHe))].join(' · '), url: t.parts[0].sefaria };
 }
 
-// ---------- layout ----------
-const deg = Math.PI / 180;
-function offsetLatLon(lat, lon, bearingDeg, distDeg) {
-  const φ1 = lat * deg, λ1 = lon * deg, θ = bearingDeg * deg, δ = distDeg * deg;
-  const φ2 = Math.asin(Math.sin(φ1) * Math.cos(δ) + Math.cos(φ1) * Math.sin(δ) * Math.cos(θ));
-  const λ2 = λ1 + Math.atan2(Math.sin(θ) * Math.sin(δ) * Math.cos(φ1), Math.cos(δ) - Math.sin(φ1) * Math.sin(φ2));
-  return [φ2 / deg, ((λ2 / deg + 540) % 360) - 180];
-}
-
+// ---------- layout: Jacob's ladder ----------
+// One turn of the helix per world (עשיה → אצילות, bottom to top); every region owns a 30° sector of each turn.
+// Inside a (world, region) cell the prayers stand on consecutive rungs in the order they are said.
 const nodeById = new Map(NODES.map((n) => [n.id, n]));
 const layout = new Map();
-// Regions dominated by one ceremony are laid out as a spiral in the ceremony's order,
-// so its route flows outward and only genuine repetitions cut back across.
-const SPIRAL_ORDER = { yk: ['yom-kippur'], rh: ['rosh-hashana'], pesach: ['pesach-seder'], chaim: ['wedding', 'brit-mila'] };
-for (const region of REGIONS) {
-  const members = NODES.filter((n) => n.region === region.id);
-  const routes = SPIRAL_ORDER[region.id];
-  if (routes) {
-    const order = [];
-    for (const rid of routes) for (const st of ROUTES.find((r) => r.id === rid).stops) if (!order.includes(st.n)) order.push(st.n);
-    const rank = (n) => { const i = order.indexOf(n.id); return i < 0 ? 999 : i; };
-    const sorted = [...members].sort((a, b) => rank(a) - rank(b));
-    const step = 4.7; // degrees between consecutive nodes
-    const b = (step * 1.08) / (2 * Math.PI); // ring spacing
-    let theta = 2 * Math.PI * 0.55;
-    sorted.forEach((n) => {
-      const r = b * theta;
-      layout.set(n.id, offsetLatLon(region.lat, region.lon, (theta * 180) / Math.PI, r));
-      theta += step / Math.max(r, step * 0.6);
-    });
-    continue;
-  }
-  // otherwise: sunflower, important nodes in the centre
-  const ordered = [...members].sort((a, b) => (b.imp || 1) - (a.imp || 1));
-  const spacing = members.length > 20 ? 4.5 : members.length > 12 ? 4.8 : 5.2;
-  ordered.forEach((n, i) => {
-    const dist = i === 0 ? 0 : spacing * Math.sqrt(i + 0.15);
-    const bearing = i * 137.508 + 20;
-    layout.set(n.id, offsetLatLon(region.lat, region.lon, bearing, dist));
-  });
+const WORLD_IDS = WORLDS.map((w) => w.id);
+const chronoRank = new Map();
+for (const r of ROUTES) for (const st of r.stops) if (!chronoRank.has(st.n)) chronoRank.set(st.n, chronoRank.size);
+for (const n of NODES) {
+  if (!PLACEMENT[n.id]) errors.push(`ladder: node ${n.id} has no world placement`);
 }
-
-// layout sanity: nodes of different regions should not collide
-{
-  const ids = [...layout.keys()];
-  let worst = [99, ''];
-  for (let i = 0; i < ids.length; i++) for (let j = i + 1; j < ids.length; j++) {
-    const [a1, o1] = layout.get(ids[i]), [a2, o2] = layout.get(ids[j]);
-    const c = Math.sin(a1 * deg) * Math.sin(a2 * deg) + Math.cos(a1 * deg) * Math.cos(a2 * deg) * Math.cos((o1 - o2) * deg);
-    const d = Math.acos(Math.min(1, c)) / deg;
-    if (d < worst[0]) worst = [d, ids[i] + ' ~ ' + ids[j]];
-    if (d < 3.2) warnings.push(`layout: ${ids[i]} and ${ids[j]} only ${d.toFixed(1)}° apart`);
+for (const id of Object.keys(PLACEMENT)) if (!nodeById.has(id)) errors.push(`ladder: placement for unknown node ${id}`);
+for (const region of REGIONS) if (!SECTOR_ORDER.includes(region.id)) errors.push(`ladder: region ${region.id} has no sector`);
+for (const [s, regionId] of SECTOR_ORDER.entries()) {
+  for (const [w, worldId] of WORLD_IDS.entries()) {
+    const cell = NODES.filter((n) => n.region === regionId && PLACEMENT[n.id] === worldId)
+      .sort((a, b) => (chronoRank.get(a.id) ?? 999) - (chronoRank.get(b.id) ?? 999));
+    const n = cell.length;
+    const rows = n <= 3 ? 1 : n <= 7 ? 2 : 3;
+    const mid = (LADDER.rIn + LADDER.rOut) / 2;
+    const dr = (LADDER.rOut - LADDER.rIn) * 0.3;
+    cell.forEach((node, i) => {
+      const a = s * 30 + 3 + ((i + 0.5) / n) * 24;
+      const row = rows === 1 ? 0 : (i % rows) - (rows - 1) / 2;
+      const r = mid + row * dr;
+      const y = LADDER.base + (w + a / 360) * LADDER.turnH;
+      layout.set(node.id, { world: worldId, wsrc: ARI.has(node.id) ? 'ari' : 'tfila', a: +a.toFixed(3), r: +r.toFixed(4), y: +y.toFixed(4) });
+    });
   }
-  console.log('closest nodes:', worst[0].toFixed(2) + '°', worst[1]);
+}
+{
+  // sanity: nodes should not sit on top of each other
+  const pts = [...layout.entries()].map(([id, p]) => [id, Math.sin((p.a * Math.PI) / 180) * p.r, p.y, Math.cos((p.a * Math.PI) / 180) * p.r]);
+  let worst = [99, ''];
+  for (let i = 0; i < pts.length; i++) for (let j = i + 1; j < pts.length; j++) {
+    const d = Math.hypot(pts[i][1] - pts[j][1], pts[i][2] - pts[j][2], pts[i][3] - pts[j][3]);
+    if (d < worst[0]) worst = [d, pts[i][0] + ' ~ ' + pts[j][0]];
+  }
+  console.log('closest nodes on the ladder:', worst[0].toFixed(3), worst[1]);
 }
 
 // ---------- nodes ----------
@@ -150,11 +137,10 @@ for (const n of NODES) {
 
   for (const [type, target] of n.rel || []) if (!nodeById.has(target)) errors.push(`node ${n.id}: rel to unknown ${target}`);
   const hasAny = Object.values(texts).some((t) => t.id || t.kav) || gen;
-  const [lat, lon] = layout.get(n.id);
   outNodes.push({
     id: n.id, region: n.region, title: n.title, k: n.k || 'core', imp: n.imp || 1,
     d: n.d, w: n.w, v: n.v || null, tags: n.tags || [],
-    lat: +lat.toFixed(3), lon: +lon.toFixed(3),
+    ...layout.get(n.id),
     texts, gen: gen ? textSummary(gen) : null,
     explanationOnly: !hasAny,
     rel: (n.rel || []).map(([type, target, note]) => ({ type, target, note: note || null })),
@@ -187,6 +173,7 @@ for (const r of ROUTES) {
 }
 
 // ---------- text files, previews, search ----------
+const ladderSources = Object.fromEntries(Object.entries(LADDER_SOURCES).map(([k, ref]) => [k, textSummary(resolveTextId(ref, `ladder/${k}`))]));
 for (const [hash, payload] of texts) writeFileSync(join(OUT, 't', hash + '.json'), JSON.stringify(payload));
 
 function previewWords(hash, max = 90) {
@@ -231,7 +218,9 @@ for (const t of texts.values()) for (const p of t.parts) {
 const editions = [...editionMap.values()].sort((a, b) => b.excerpts - a.excerpts);
 const world = {
   generated: new Date().toISOString().slice(0, 10),
-  regions: REGIONS, nusachim: NUSACHIM, nodes: outNodes, routes: outRoutes, books, editions,
+  regions: REGIONS.map(({ lat, lon, ...r }) => ({ ...r, a: SECTOR_ORDER.indexOf(r.id) * 30 + 15 })),
+  nusachim: NUSACHIM, nodes: outNodes, routes: outRoutes, books, editions,
+  worlds: WORLDS, ladder: { ...LADDER, sources: ladderSources },
 };
 writeFileSync(join(OUT, 'world.json'), JSON.stringify(world));
 

@@ -22,7 +22,7 @@ export function renderLibrary(): void {
   let main = '';
   if (libSection === 'routes') {
     main = `<span class="eyebrow">ספרייה · מסלולים</span><h2>מסלולי תפילה כרשימה</h2>
-      <p class="intro">כל מסלול כרשימה מסודרת — חלופה טקסטואלית מלאה לגלובוס. תחנות שאינן בנוסח ${escapeHtml(ns.short)} מסומנות.</p>
+      <p class="intro">כל מסלול כרשימה מסודרת — חלופה טקסטואלית מלאה לסולם התלת־ממדי. תחנות שאינן בנוסח ${escapeHtml(ns.short)} מסומנות.</p>
       ${state.world.routes.map((r) => {
         const { secs, of } = sections(r);
         return `<div class="box"><span class="lbl">${escapeHtml(r.group)}</span><h3 style="margin:0 0 6px;font-size:19px">${escapeHtml(r.title)}</h3><p style="color:var(--muted);font-size:13px;line-height:1.7;margin:0 0 10px">${escapeHtml(r.d)}</p>
@@ -46,7 +46,8 @@ export function renderLibrary(): void {
       <p class="intro">כל כרטיס פותח את הקורא: הסבר, זמן האמירה, הבדלי מנהג, קשרים, והטקסט המלא עם המהדורה והרישיון. ${list.length} פריטים.</p>
       ${list.length ? `<div class="cards">${list.map((n) => {
         const r = n.texts[state.nusach];
-        return `<button class="card-btn" data-node="${n.id}"><b style="color:${regionById(n.region).color}"><i></i><span style="color:var(--text)">${escapeHtml(n.title)}</span></b><span>${escapeHtml(n.w)}</span><span class="row"><span class="pill ${r.status}">${STATUS_HE[r.status]}</span><span class="pill ghost">${KIND_HE[n.k]}</span>${r.words ? `<span class="pill ghost mono">${fmt(r.words)} מילים</span>` : ''}${n.tags.includes('kabbalah') ? '<span class="pill kab">✧</span>' : ''}</span></button>`;
+        const url = r.url || r.kav?.url;
+        return `<div class="card-wrap"><button class="card-btn" data-node="${n.id}"><b style="color:${regionById(n.region).color}"><i></i><span style="color:var(--text)">${escapeHtml(n.title)}</span></b><span>${escapeHtml(n.w)}</span><span class="row"><span class="pill ${r.status}">${STATUS_HE[r.status]}</span><span class="pill ghost">${KIND_HE[n.k]}</span>${r.words ? `<span class="pill ghost mono">${fmt(r.words)} מילים</span>` : ''}${n.tags.includes('kabbalah') ? '<span class="pill kab">✧</span>' : ''}</span></button>${url ? `<a class="card-src" href="${escapeHtml(url)}" target="_blank" rel="noopener" aria-label="${escapeHtml(n.title)} — המקור בספריא">מקור ↗</a>` : ''}</div>`;
       }).join('')}</div>` : `<div class="notice">אין פריטים התואמים לסינון בנוסח ${escapeHtml(ns.short)}.</div>`}`;
   }
   v.innerHTML = `<button class="icon-btn close" data-close aria-label="חזרה למעבדה">✕</button><div class="view-grid">
@@ -101,6 +102,8 @@ export async function renderCompare(): Promise<void> {
 // ───────────────────────────── learn ─────────────────────────────
 let learnIdx = 0;
 const EXPLAINERS = [
+  { t: 'סולם התפילה: ארבעה עולמות', s: 'למה סולם, ומה מקור החלוקה — בדברי האר״י' },
+  { t: 'הקדיש: החוליה שבין חלקי התפילה', s: 'ארבע צורות, ומקומה של כל אחת' },
   { t: 'יום כיפור: חמש תפילות, שבעה וידויים', s: 'מה חוזר לאורך היום הקדוש, ואיפה' },
   { t: 'כמה מהעולם זמין בכל נוסח', s: 'כיסוי הטקסטים — ומה חסר בכנות' },
   { t: 'מה נוסף לעמידה, ומתי', s: 'יעלה ויבוא, על הניסים, עננו, נחם' },
@@ -109,7 +112,7 @@ const EXPLAINERS = [
 
 export function renderLearn(): void {
   const v = $('learnView');
-  const bodies = [learnYK, learnCoverage, learnAdds, learnSources];
+  const bodies = [learnLadder, learnKaddish, learnYK, learnCoverage, learnAdds, learnSources];
   v.innerHTML = `<button class="icon-btn close" data-close aria-label="חזרה למעבדה">✕</button><div class="view-grid">
     <nav class="view-nav" aria-label="הסברים">${EXPLAINERS.map((x, i) => `<button class="item" data-i="${i}" aria-current="${i === learnIdx}"><span class="n">${String(i + 1).padStart(2, '0')}</span><b>${x.t}</b><span>${x.s}</span></button>`).join('')}
       <div class="panel" style="padding:14px 16px;font-size:12px;color:var(--muted);line-height:1.7"><span class="lbl" style="display:block;margin-bottom:8px">סימוני הטקסט</span>
@@ -123,10 +126,53 @@ export function renderLearn(): void {
   v.querySelectorAll<HTMLElement>('[data-node]').forEach((b) => (b.onclick = () => emit('read-node', b.dataset.node)));
 }
 
+function learnLadder(): string {
+  const w = state.world.worlds;
+  const count = (id: string) => state.world.nodes.filter((n) => n.world === id).length;
+  const ari = state.world.nodes.filter((n) => n.wsrc === 'ari');
+  const src = state.world.ladder.sources;
+  queueMicrotask(() => {
+    for (const [key, el] of [['worlds', 'ariWorlds'], ['descent', 'ariDescent']] as const) {
+      const id = src[key]?.id;
+      const box = document.getElementById(el);
+      if (!id || !box) continue;
+      loadText(id).then((t) => {
+        const p = t.parts[0];
+        box.innerHTML = `<div class="prayer" style="font-size:19px">${p.segments.join(' ')}</div><div class="prov-line">${escapeHtml(p.bookHe)} › ${escapeHtml(p.section)} · ${escapeHtml(p.versionHe || p.version)} · ${escapeHtml(p.licenseHe)} · <a href="${escapeHtml(p.sefaria)}" target="_blank" rel="noopener">ספריא</a></div>`;
+      }).catch(() => { box.textContent = 'הטקסט לא נטען.'; });
+    }
+  });
+  return `<p class="intro">״וַיַּחֲלֹם וְהִנֵּה סֻלָּם מֻצָּב אַרְצָה וְרֹאשׁוֹ מַגִּיעַ הַשָּׁמָיְמָה, וְהִנֵּה מַלְאֲכֵי אֱלֹהִים עֹלִים וְיֹרְדִים בּוֹ״ (בראשית כח, יב). המסורת ראתה בסולם של יעקב את התפילה: היא ״מוצבת ארצה״ — בגוף, במעשה, במקום — ו״ראשה מגיע השמימה״. האר״י לימד שתפילת השחר עולה בארבעה עולמות, זה אחר זה. כך בנוי המכשיר: סיבוב אחד של הסולם לכל עולם, מלמטה למעלה, ו־12 צדדים לתחומי התפילה.</p>
+    <div class="box"><span class="lbl">שער הכוונות · דרושי תפילת השחר — החלוקה לארבעה עולמות</span><div id="ariWorlds">…</div></div>
+    <div class="box"><span class="lbl">ארבעת העולמות בסולם</span>
+      <table class="data"><thead><tr><th>עולם</th><th>בתפילת השחר, לפי האר״י</th><th>שיבוץ שאר התפילות ב־tfila</th><th>תפילות</th></tr></thead><tbody>
+      ${[...w].reverse().map((x, k) => `<tr><td><b style="color:${x.color}">${['IV', 'III', 'II', 'I'][k]} · ${x.he}</b></td><td>${escapeHtml(x.ari)}</td><td>${escapeHtml(x.rule)}</td><td class="mono">${count(x.id)}</td></tr>`).join('')}
+      </tbody></table></div>
+    <div class="box"><span class="lbl">ירידה כדי לעלות — נפילת אפיים</span><div id="ariDescent">…</div>
+      <p style="margin:10px 0 0;color:var(--muted);font-size:13px">לכן התחנון והווידוי עומדים בסולם בעולם העשיה: אחרי העמידה, ב״אצילות״, המתפלל ״מפיל עצמו עד העשיה״. במסלול יום הכיפורים רואים זאת חמש פעמים — עלייה לעמידה וירידה לווידוי — עד הנעילה, העומדת על השלב העליון.</p></div>
+    <div class="notice warn"><b>מה מבוסס על מקור, ומה לא:</b> רק ${ari.length} תחנות ממוקמות לפי דברי האר״י המפורשים (${ari.map((n) => escapeHtml(n.title)).join(', ')}). שאר התפילות שובצו כאן <b>מבנית</b>, לפי כלל אצבע שבטבלה — כדי לפרוש את המפה, לא כקביעה קבלית. בכל תפילה מצוין מה מקור מקומה.</div>`;
+}
+
+function learnKaddish(): string {
+  const routes = state.world.routes.filter((r) => r.stops.some((s) => s.n === 'kaddish'));
+  const forms = [
+    ['חצי קדיש', 'סוגר יחידה ופותח את הבאה: אחר פסוקי דזמרה (לפני ״ברכו״), לפני העמידה, אחר קריאת התורה.', 'חצי'],
+    ['קדיש תתקבל (״שלם״)', 'חותם את יחידת העמידה של כל תפילה — ״תתקבל צלותהון ובעותהון״.', 'תתקבל'],
+    ['קדיש יתום', 'אחר מזמורים ואחר ״עלינו״, נאמר בידי האבלים — ״יהא שלמא רבא״.', 'יתום'],
+    ['קדיש דרבנן (״על ישראל״)', 'אחר לימוד תורה: הקרבנות ו״רבי ישמעאל״, פיטום הקטורת, פרקי אבות.', 'דרבנן'],
+  ];
+  const tally = (needle: string) => routes.reduce((a, r) => a + r.stops.filter((s) => s.n === 'kaddish' && (s.note || '').split('—')[0].includes(needle)).length, 0);
+  return `<p class="intro">הקדיש אינו ״עוד תפילה״ בתוך הסדר אלא החוליה שמחברת ומפרידה בין חלקיו: הוא נאמר במעבר מיחידה ליחידה, ובכל מקום — בצורה אחרת. הוא מ״דברים שבקדושה״ ונאמר רק במניין (עשרה). במסלולים של tfila כל קדיש מופיע במקומו, והטקסט שלו נחתך מאותו מקום בדיוק במהדורה של הנוסח.</p>
+    <div class="box"><span class="lbl">ארבע הצורות</span><table class="data"><thead><tr><th>צורה</th><th>מקומה</th><th>במסלולים</th></tr></thead><tbody>
+      ${forms.map(([t, d, k]) => `<tr><td><b>${t}</b></td><td>${d}</td><td class="mono">${tally(k)}</td></tr>`).join('')}</tbody></table></div>
+    <div class="box"><span class="lbl">הקדיש במסלולים</span><div class="cards">${routes.map((r) => `<button class="card-btn" data-open-route="${r.id}"><b><i></i><span style="color:var(--text)">${escapeHtml(r.title)}</span></b><span>${r.stops.filter((s) => s.n === 'kaddish').length} פעמים</span></button>`).join('')}</div></div>
+    <div class="notice">הבדלי מנהג: בעדות המזרח ״עלינו״ חותם את התפילה בלי קדיש אחריו, ואילו באשכנז, בנוסח ספרד ובחב״ד אומרים אחריו קדיש יתום; בערבית של עדות המזרח ובחב״ד יש גם חצי קדיש לפני ״ברכו״. תחנות כאלה מסומנות ״לא בנוסח״ בנוסחים שאינם נוהגים בהן.</div>`;
+}
+
 function learnYK(): string {
   const r = routeById('yom-kippur');
   const { secs, of } = sections(r);
-  const rows = ['amidah-yk', 'vidui-yk', 'selichot-yk', 'avinu-malkenu'];
+  const rows = ['amidah-yk', 'vidui-yk', 'kaddish', 'selichot-yk', 'avinu-malkenu'];
   const W = 860, padR = 150, padL = 20, top = 34, rowH = 40;
   const x = (i: number) => W - padR - (i / (r.stops.length - 1)) * (W - padR - padL);
   const H = top + rows.length * rowH + 30;
@@ -139,10 +185,10 @@ function learnYK(): string {
       ${occ.map(({ i }) => `<circle cx="${x(i)}" cy="${y}" r="6" fill="${secs[of[i]].color}" stroke="#05070a" stroke-width="2"><title>תחנה ${i + 1}</title></circle><text x="${x(i)}" y="${y + 20}" text-anchor="middle">${i + 1}</text>`).join('')}`;
   }).join('');
   const count = (id: string) => r.stops.filter((s) => s.n === id).length;
-  return `<p class="intro">ביום הכיפורים מתפללים חמש תפילות — ערבית, שחרית, מוסף, מנחה ונעילה — ובכל אחת חוזרים אותם רכיבים. העמידה נאמרת <b class="mono">${count('amidah-yk')}</b> פעמים, הווידוי מופיע <b class="mono">${count('vidui-yk')}</b> פעמים במסלול (כולל במנחה של ערב החג), ו״אבינו מלכנו״ <b class="mono">${count('avinu-malkenu')}</b> פעמים. בכל מופע הטקסט שונה מעט — בנעילה, למשל, אומרים ״חתמנו״ במקום ״כתבנו״ ואין ״על חטא״.</p>
+  return `<p class="intro">ביום הכיפורים מתפללים חמש תפילות — ערבית, שחרית, מוסף, מנחה ונעילה — ובכל אחת חוזרים אותם רכיבים. העמידה נאמרת <b class="mono">${count('amidah-yk')}</b> פעמים, הווידוי מופיע <b class="mono">${count('vidui-yk')}</b> פעמים במסלול (כולל במנחה של ערב החג), ו״אבינו מלכנו״ <b class="mono">${count('avinu-malkenu')}</b> פעמים; הקדיש — <b class="mono">${count('kaddish')}</b> פעמים, חוליה בין חלקי כל תפילה. בכל מופע הטקסט שונה מעט — בנעילה, למשל, אומרים ״חתמנו״ במקום ״כתבנו״ ואין ״על חטא״.</p>
     <div class="box"><span class="lbl">מופעים לאורך המסלול · ${r.stops.length} תחנות · מימין לשמאל</span>
-      <svg class="chart" viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="מופעי העמידה, הווידוי, הסליחות ואבינו מלכנו לאורך יום הכיפורים">${bands}${lines}</svg></div>
-    <div class="notice">כל נקודה היא תחנה במסלול; הצבע הוא חלק היום. לחצו כדי לראות את המסלול נדלק על הגלובוס.<div class="btns"><button class="btn primary" data-open-route="yom-kippur">✦ פתחו את מסלול יום כיפור</button></div></div>`;
+      <svg class="chart" viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="מופעי העמידה, הווידוי, הקדיש, הסליחות ואבינו מלכנו לאורך יום הכיפורים">${bands}${lines}</svg></div>
+    <div class="notice">כל נקודה היא תחנה במסלול; הצבע הוא חלק היום. לחצו כדי לראות את המסלול עולה ויורד בסולם.<div class="btns"><button class="btn primary" data-open-route="yom-kippur">✦ פתחו את מסלול יום כיפור</button></div></div>`;
 }
 
 function learnCoverage(): string {
@@ -167,7 +213,7 @@ function learnCoverage(): string {
 function learnAdds(): string {
   const adds = state.world.nodes.flatMap((n) => n.rel.filter((r) => r.type === 'adds').map((r) => ({ from: n, to: nodeById(r.target), note: r.note })));
   const targets = [...new Set(adds.map((a) => a.to.id))];
-  return `<p class="intro">חלק מהתפילות אינן עומדות בפני עצמן אלא <b>נוספות</b> לתוך תפילה אחרת ביום מסוים. כך נשמרת מסגרת קבועה, ובתוכה משתנה תוכן לפי הזמן. על הגלובוס הקשרים האלה מסומנים בקו ירוק מקווקו.</p>
+  return `<p class="intro">חלק מהתפילות אינן עומדות בפני עצמן אלא <b>נוספות</b> לתוך תפילה אחרת ביום מסוים. כך נשמרת מסגרת קבועה, ובתוכה משתנה תוכן לפי הזמן. בסולם הקשרים האלה מסומנים בקו ירוק מקווקו.</p>
     ${targets.map((t) => `<div class="box"><span class="lbl">נוסף אל · ${escapeHtml(nodeById(t).title)}</span>
       <div class="cards">${adds.filter((a) => a.to.id === t).map((a) => `<button class="card-btn" data-node="${a.from.id}"><b style="color:#5dffa2"><i></i><span style="color:var(--text)">${escapeHtml(a.from.title)}</span></b><span>${escapeHtml(a.note || '')} · ${escapeHtml(a.from.w)}</span></button>`).join('')}</div></div>`).join('')}`;
 }
@@ -185,10 +231,11 @@ function learnSources(): string {
 export function renderHelp(): void {
   $('helpPanel').innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center"><span class="eyebrow">עזרה</span><button class="icon-btn" data-close aria-label="סגירה">✕</button></div>
     <h2 id="helpTitle">איך משתמשים במכשיר</h2>
-    <p>הגלובוס הוא מכשיר: גררו כדי לסובב אותו בתוך המעמד, התקרבו כדי לראות את מילות התפילה מופיעות על פניו, ולחצו על תפילה כדי לקרוא אותה. בחרו מסלול בלוח הבקרה — והוא יידלק תחנה אחר תחנה; גררו את ״ציר המסלול״ כדי לנוע בזמן.</p>
-    <dl><dt><kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd></dt><dd>סיבוב הגלובוס (כשהוא בפוקוס)</dd>
+    <p>סולם התפילות הוא מכשיר: גררו הצידה כדי להקיף אותו, ולמעלה ולמטה כדי לטפס; התקרבו כדי לראות את מילות התפילה על השלבים, ולחצו על תפילה כדי לקרוא אותה. בחרו מסלול בלוח הבקרה — והוא יידלק תחנה אחר תחנה; גררו את ״ציר המסלול״ כדי לנוע בזמן.</p>
+    <p><b>חזרה:</b> הכפתור ״→ חזרה״ שבראש המסך, מקש <kbd>Esc</kbd> או כפתור ״אחורה״ של הדפדפן והטלפון — כל אחד מהם מחזיר שלב אחד: מתחנה למסלול, ממסלול לסולם כולו.</p>
+    <dl><dt><kbd>←</kbd> <kbd>→</kbd></dt><dd>הקפת הסולם (כשהוא בפוקוס)</dd><dt><kbd>↑</kbd> <kbd>↓</kbd> <kbd>PgUp</kbd> <kbd>PgDn</kbd></dt><dd>טיפוס וירידה</dd><dt><kbd>Home</kbd></dt><dd>מבט על הסולם כולו</dd>
       <dt><kbd>+</kbd> <kbd>−</kbd></dt><dd>התקרבות והתרחקות</dd><dt><kbd>Enter</kbd></dt><dd>בחירת התפילה שבמרכז</dd>
-      <dt><kbd>N</kbd> <kbd>P</kbd></dt><dd>התחנה הבאה / הקודמת במסלול</dd><dt><kbd>/</kbd></dt><dd>חיפוש</dd><dt><kbd>Esc</kbd></dt><dd>סגירה / יציאה מהמסלול</dd></dl>
+      <dt><kbd>N</kbd> <kbd>P</kbd></dt><dd>התחנה הבאה / הקודמת במסלול</dd><dt><kbd>/</kbd></dt><dd>חיפוש</dd><dt><kbd>Esc</kbd></dt><dd>סגירה / חזרה שלב אחד</dd></dl>
     <p>הספרייה היא תצוגת טקסט מלאה ונגישה של כל התוכן והמסלולים. כפתור העיגול מפחית תנועה; בחירת האיכות משפיעה על הצללים, הבלום והחדות.</p>`;
   $('helpPanel').querySelector<HTMLElement>('[data-close]')!.onclick = () => emit('help', false);
 }
