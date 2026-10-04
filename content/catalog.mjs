@@ -18,18 +18,18 @@
 export const R = (book, path, opts = {}) => ({ book, path: path ? path.split('/') : [], ...opts });
 
 export const REGIONS = [
-  { id: 'shacharit', name: 'שחרית', lat: 12, lon: 0, color: '#ffc35a' },
-  { id: 'boker', name: 'השכמת הבוקר', lat: 44, lon: -6, color: '#ffd27a' },
-  { id: 'erev', name: 'מנחה וערבית', lat: -22, lon: -4, color: '#9db8ff' },
-  { id: 'rh', name: 'ראש השנה', lat: 30, lon: -46, color: '#f4a8ff' },
-  { id: 'yk', name: 'יום הכיפורים', lat: -4, lon: -60, color: '#ffffff' },
-  { id: 'taaniot', name: 'תעניות ואבל', lat: -44, lon: -50, color: '#9fb0c8' },
-  { id: 'chaim', name: 'מעגל החיים', lat: -52, lon: 4, color: '#ffb3c7' },
-  { id: 'seuda', name: 'סעודה וברכות', lat: -26, lon: 42, color: '#e9c38a' },
-  { id: 'shabbat', name: 'שבת', lat: 14, lon: 46, color: '#f6d58f' },
-  { id: 'sod', name: 'סוד ותיקונים', lat: 58, lon: 50, color: '#ffe08a' },
-  { id: 'moadim', name: 'מועדים', lat: 22, lon: 96, color: '#a9e6a1' },
-  { id: 'pesach', name: 'ליל הסדר', lat: -20, lon: 92, color: '#c6f08f' },
+  { id: 'shacharit', name: 'שחרית', lat: 12, lon: 0, color: '#ffb547' },
+  { id: 'boker', name: 'השכמת הבוקר', lat: 44, lon: -6, color: '#ffe07a' },
+  { id: 'erev', name: 'מנחה וערבית', lat: -22, lon: -4, color: '#7fb2ff' },
+  { id: 'rh', name: 'ראש השנה', lat: 30, lon: -46, color: '#ff6fae' },
+  { id: 'yk', name: 'יום הכיפורים', lat: -4, lon: -60, color: '#5fe0ff' },
+  { id: 'taaniot', name: 'תעניות ואבל', lat: -44, lon: -50, color: '#a7b3c6' },
+  { id: 'chaim', name: 'מעגל החיים', lat: -52, lon: 4, color: '#ff8a7a' },
+  { id: 'seuda', name: 'סעודה וברכות', lat: -26, lon: 42, color: '#e0b77e' },
+  { id: 'shabbat', name: 'שבת', lat: 14, lon: 46, color: '#fff1a8' },
+  { id: 'sod', name: 'סוד ותיקונים', lat: 58, lon: 50, color: '#c9a2ff' },
+  { id: 'moadim', name: 'מועדים', lat: 22, lon: 96, color: '#5dffa2' },
+  { id: 'pesach', name: 'ליל הסדר', lat: -20, lon: 92, color: '#b6f06a' },
 ];
 
 export const NODES = [

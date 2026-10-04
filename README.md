@@ -10,7 +10,7 @@ An interactive, Hebrew/RTL, WebGL "world of prayers": 154 prayers and ritual com
 
 ## Run locally
 
-Requires Node 18+ (tested with Node 22).
+Requires Node 20+ (tested with Node 22).
 
 ```bash
 npm install
@@ -41,19 +41,48 @@ CHROMIUM=/path/to/chromium npm run test:e2e   # screenshots into test-shots/
 
 ## Design and interaction
 
-* **The globe.** A dark, astrolabe-gridded sphere whose skin is woven from faint rows of the actual prayer words of the selected nusach, with soft light over each "continent" (שחרית, שבת, יום הכיפורים, מעגל החיים…). Stars, an atmosphere rim and gentle bloom give it depth; the camera tilts toward the horizon as you descend.
-* **Semantic zoom.** Far away: region names and the most important prayers. Closer: all titles (with collision avoidance). Closer still: each prayer opens into a round medallion with its opening words, set right-to-left with nikud, lying on the surface of the globe. Click a prayer or a medallion to read the full text.
-* **Routes.** Choosing a route draws a flowing dashed path (the flow and a travelling light show direction) through numbered stops. When a prayer recurs — the Yom Kippur Amidah 5 times, Vidui 7 times, Sheva Berachot twice at a wedding — each occurrence gets its own numbered badge around the node and its own occurrence-specific text (e.g. the Vidui inside the Musaf Amidah vs. the Neilah Vidui). Relations are drawn in distinct styles: **contains** (solid gold), **adds to** (dashed green, e.g. Ya'aleh VeYavo → Amidah), **varies by custom** (dotted violet, e.g. Yizkor ↔ Hashkava), **related** (blue).
-* **Itinerary.** Section headings (ערב יום הכיפורים, כל נדרי, מוסף, נעילה…), status tags (core / conditional / custom / optional), occurrence counters, and stops that do not exist in the selected nusach are greyed and labelled. Some stops are deliberately shown as *omitted* (e.g. Tachanun is not said at a Brit) to explain what changes.
-* **Guided journey.** ▶ flies stop to stop with captions; pause, next and previous at any time.
-* **Reader.** Explanation (what / when / variations), relations, a per-nusach availability strip, then the text with source card (book › section, edition, license, Sefaria link), nikud on/off, font size, and rubrics (instructions in the source, such as "בעשרת ימי תשובה אומרים") styled distinctly from the prayer words.
-* **Search** works with or without nikud (and folds final letters), across titles, explanations and the full text of the selected nusach, and highlights the hits inside the reader.
-* **Accessibility.** Full keyboard support (globe: arrows/±/Enter; `/` search; Esc closes; ↑↓ through stops), a complete text-only view of all content and routes, live-region announcements, reduced-motion mode (honours `prefers-reduced-motion`, with a toggle), and an automatic text-view fallback when WebGL is unavailable. Responsive: bottom sheet and full-screen reader on phones.
-* Deep links: the URL keeps the nusach, route, stop or prayer (e.g. `#n=em&route=yom-kippur&stop=10`).
+The visual language follows the "interactive STEM lesson" style of Opus-built lab pages such as
+[The Plane of Focus](https://sael.net/plane-of-focus/): a precise physical model at the centre, lit like a product shot,
+surrounded by glass instrument panels with letter-spaced micro-labels, monospace readouts and a control dock.
 
-Tech: vanilla JS + [three.js](https://threejs.org) (custom shaders, fat lines, bloom), DOM labels for crisp Hebrew typography, canvas-rendered text textures, Vite. Fonts: Frank Ruhl Libre and Heebo (self-hosted via Fontsource).
+* **The instrument.** A lacquered globe of prayers sits in a graduated dial ring (degree ticks and the 22 letters) on a
+  four-legged cradle, standing on a perforated optical breadboard. A procedural studio environment (PMREM) gives the metal
+  and lacquer their reflections; the key light casts real shadows; dust motes drift in the light. The globe *turns inside
+  its stand* as you drag, so the instrument always reads as a physical object.
+* **The skin is made of words.** The globe's surface is woven from the actual opening words of every prayer in the
+  selected nusach, brighter around each prayer, with the 12 "continents" (שחרית, שבת, יום הכיפורים, מעגל החיים…).
+* **Semantic zoom.** Far: continent names and the key prayers as callout tags. Closer: every title (collision-avoided).
+  Closer still: each prayer opens into a dial-like medallion with its first words set right-to-left with nikud,
+  lying on the globe — the Kol Nidrei text literally fills the dial when you descend onto it.
+* **The plane of focus.** The selected prayer gets a rising light shaft and a "בפוקוס" tag, like the glowing focal plane
+  in the reference.
+* **Routes.** A flowing dashed light path (the flow and a travelling light show direction) with numbered badges. When a
+  prayer recurs — the Yom Kippur Amidah ×5, Vidui ×7, Sheva Berachot ×2 at a wedding — each occurrence gets its own badge
+  and its own occurrence-specific text. Regions dominated by one ceremony (Yom Kippur, Rosh Hashanah, the Seder,
+  life-cycle) are laid out as a spiral in the ceremony's chronological order, so the path flows outward and only true
+  repetitions cut back. Relations: **contains** (gold), **adds to** (green dashed), **varies by custom** (violet dotted),
+  **related** (blue); "רצף בלבד / רצף + קשרים" toggles them.
+* **Panels.** *Explain* (start side): what this stop is, when it is said, custom differences, where it recurs, before/after.
+  *Readouts* (end side): big mono numbers (stop, occurrence, nusach, coverage), a route "depth track" with every stop
+  coloured by section, and a list of the current section's stops with status pills and word-count bars.
+  *Dock*: the route scrubber (drag through time, like a focus ring), section chips, nusach tiles whose ring shows text
+  coverage, and view controls including the **guided journey**. *LIVE* inset: the current prayer's words crawling past
+  like a sensor feed; click it to read.
+* **Reader.** Explanation and relations beside the full text, with a provenance card (book › section, edition, license,
+  Sefaria link), nikud on/off, font size, styled rubrics, per-nusach availability, and explicit unavailable states.
+* **Library · Compare · Learn.** The Library is the full accessible text alternative (every prayer, every route as an
+  ordered list). Compare shows one prayer in two nusachim side by side. Learn has four numbered explainers computed from
+  the data (Yom Kippur's repeated prayers chart, coverage per nusach, what is added to the Amidah and when, sources and
+  licenses).
+* **Accessibility & performance.** Keyboard throughout (globe: arrows/±/Enter; `N`/`P` stops; `/` search; `Esc`),
+  live-region announcements, reduced-motion mode, quality presets (Auto/Low/Medium/High — Auto steps down if the frame
+  rate drops), and an automatic text-only fallback when WebGL is unavailable. Responsive down to phone width.
+* Deep links keep the nusach, tab, route, stop or prayer (e.g. `#n=em&route=yom-kippur&stop=10`).
 
----
+**Tech:** TypeScript, Vite, [three.js](https://threejs.org) 0.186 (custom shaders, fat lines, PMREM environment,
+shadows), [`postprocessing`](https://github.com/pmndrs/postprocessing) (mipmap bloom, ACES filmic tone mapping,
+vignette, SMAA), Fontsource variable fonts — Inter and JetBrains Mono (as in the reference), Heebo for Hebrew UI
+glyphs, Frank Ruhl Libre for prayer text. DOM callout labels keep Hebrew typography crisp.
 
 ## Content, sources and honest limitations
 
@@ -81,6 +110,6 @@ Other known limitations: no Sephardi Hoshanot, Ashkenazi wedding/brit liturgy, T
 content/      catalog.mjs (prayers, explanations, per-nusach Sefaria refs), routes.mjs, nusachim.mjs, books.mjs
 scripts/      fetch-sources.mjs, build-content.mjs, validate-content.mjs, dev helpers (peek/find/check)
 public/data/  generated: world.json, t/*.json (texts with attribution), preview-*.json, search-*.json
-src/          main.js (app), ui/reader.js, globe/ (Globe.js, textures.js, geo.js), styles.css
+src/          app.ts, ui/ (lab, reader, search, views), scene/ (PrayerWorld, instrument, textures, environment, geo), render/ (postprocessing pipeline, quality presets), styles/main.css
 tests/        shots.mjs — Playwright interaction + screenshot test
 ```

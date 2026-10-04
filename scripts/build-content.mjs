@@ -220,9 +220,18 @@ for (const ns of NUSACH_IDS) {
 }
 
 const books = Object.fromEntries(Object.entries(BOOKS).map(([k, b]) => [k, { title: b.title, heTitle: b.heTitle }]));
+// every edition actually used, with its license, for the "where the texts come from" explainer
+const editionMap = new Map();
+for (const t of texts.values()) for (const p of t.parts) {
+  const key = p.book + '|' + p.version;
+  const e = editionMap.get(key) || { bookHe: p.bookHe, book: p.book, version: p.version, versionHe: p.versionHe, license: p.license, licenseHe: p.licenseHe, source: p.versionSource, excerpts: 0 };
+  e.excerpts++;
+  editionMap.set(key, e);
+}
+const editions = [...editionMap.values()].sort((a, b) => b.excerpts - a.excerpts);
 const world = {
   generated: new Date().toISOString().slice(0, 10),
-  regions: REGIONS, nusachim: NUSACHIM, nodes: outNodes, routes: outRoutes, books,
+  regions: REGIONS, nusachim: NUSACHIM, nodes: outNodes, routes: outRoutes, books, editions,
 };
 writeFileSync(join(OUT, 'world.json'), JSON.stringify(world));
 

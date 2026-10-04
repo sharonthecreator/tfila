@@ -1,0 +1,13 @@
+import { chromium } from 'playwright';
+const [out, hash = '', wait = '5000', w = '1600', h = '900'] = process.argv.slice(2);
+const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium', args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+const p = await b.newPage({ viewport: { width: +w, height: +h } });
+const errs = [];
+p.on('pageerror', (e) => errs.push('pageerror ' + e.message));
+p.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') errs.push(m.type() + ' ' + m.text()); });
+await p.goto('http://localhost:4173/' + hash, { waitUntil: 'networkidle' });
+await p.waitForSelector('#loader.done', { timeout: 40000 }).catch(() => errs.push('loader not done'));
+await p.waitForTimeout(+wait);
+await p.screenshot({ path: out });
+console.log(errs.join('\n') || 'ok');
+await b.close();
