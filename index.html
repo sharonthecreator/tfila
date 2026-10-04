@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>תפילה · tfila — עולם של תפילות</title>
+    <meta name="description" content="tfila — עולם תלת־ממדי ואינטראקטיבי של תפילות, מנהגים ונוסחים: מסלולי תפילה, טקסטים מקוריים ממקורות פתוחים, ונוסחי עדות המזרח, אשכנז, ספרד, חב״ד ותימן." />
+    <meta name="theme-color" content="#05060d" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='28' fill='%2305060d' stroke='%23e8b04a' stroke-width='3'/%3E%3Ctext x='32' y='44' font-size='34' text-anchor='middle' fill='%23e8b04a' font-family='serif'%3E%D7%AA%3C/text%3E%3C/svg%3E" />
+  </head>
+  <body>
+    <a class="skip-link" href="#textView" data-action="text-view">דלגו לתצוגת הטקסט הנגישה</a>
+
+    <div id="stage" class="stage" aria-hidden="false">
+      <canvas id="globe" tabindex="0" aria-label="גלובוס התפילות. גררו או השתמשו בחצים כדי לסובב, בגלגלת או בפלוס ומינוס כדי להתקרב, ובאנטר כדי לבחור את התפילה שבמרכז המסך." role="application"></canvas>
+      <div id="labels" class="labels" aria-hidden="true"></div>
+      <div id="tooltip" class="tooltip" role="presentation" hidden></div>
+      <div id="zoomHint" class="zoom-hint" aria-hidden="true"></div>
+    </div>
+
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">ת</span>
+        <div>
+          <h1>תְּפִלָּה</h1>
+          <p>עולם של תפילות, מנהגים ונוסחים</p>
+        </div>
+      </div>
+
+      <div class="search" role="search">
+        <label for="searchInput" class="sr-only">חיפוש תפילה או מילים</label>
+        <input id="searchInput" type="search" autocomplete="off" spellcheck="false" placeholder="חיפוש תפילה או מילים — עם ניקוד או בלעדיו" aria-controls="searchResults" aria-expanded="false" />
+        <kbd aria-hidden="true">/</kbd>
+        <div id="searchResults" class="search-results" role="listbox" aria-label="תוצאות חיפוש" hidden></div>
+      </div>
+
+      <div class="top-actions">
+        <div class="nusach-picker">
+          <button id="nusachButton" class="chip-btn" aria-haspopup="listbox" aria-expanded="false" aria-controls="nusachList">
+            <span class="dot" aria-hidden="true"></span>
+            <span>נוסח: <strong id="nusachName">עדות המזרח</strong></span>
+            <span aria-hidden="true">▾</span>
+          </button>
+          <div id="nusachList" class="nusach-list" role="listbox" aria-label="בחירת נוסח" hidden></div>
+        </div>
+        <button id="viewToggle" class="icon-btn" aria-pressed="false" title="תצוגת טקסט נגישה">
+          <span aria-hidden="true">☰</span><span class="label">תצוגת טקסט</span>
+        </button>
+        <button id="motionToggle" class="icon-btn" aria-pressed="false" title="הפחתת תנועה">
+          <span aria-hidden="true">◐</span><span class="label">פחות תנועה</span>
+        </button>
+        <button id="aboutButton" class="icon-btn" title="אודות, מקורות ומגבלות">
+          <span aria-hidden="true">ⓘ</span><span class="label">מקורות</span>
+        </button>
+      </div>
+    </header>
+
+    <aside id="routesPanel" class="panel routes-panel" aria-label="מסלולי תפילה">
+      <div class="panel-head">
+        <h2 id="routesTitle">מסלולים</h2>
+        <button id="routesCollapse" class="icon-btn small" aria-expanded="true" aria-controls="routesBody" title="כיווץ">
+          <span aria-hidden="true">⟩</span><span class="sr-only">כיווץ חלונית המסלולים</span>
+        </button>
+      </div>
+      <div id="routesBody" class="panel-body"></div>
+    </aside>
+
+    <aside id="reader" class="panel reader" aria-label="קריאה" hidden>
+      <div class="reader-inner" id="readerInner"></div>
+    </aside>
+
+    <div id="journeyBar" class="journey-bar" hidden>
+      <button id="jPrev" class="icon-btn" title="התחנה הקודמת"><span aria-hidden="true">⏵</span><span class="sr-only">התחנה הקודמת</span></button>
+      <button id="jPlay" class="icon-btn play" title="מסע מודרך"><span aria-hidden="true" id="jPlayIcon">▶</span><span class="sr-only" id="jPlayLabel">התחלת מסע מודרך</span></button>
+      <button id="jNext" class="icon-btn" title="התחנה הבאה"><span aria-hidden="true">⏴</span><span class="sr-only">התחנה הבאה</span></button>
+      <div class="journey-caption" id="jCaption" aria-live="polite"></div>
+    </div>
+
+    <div id="legend" class="legend" aria-label="מקרא" hidden></div>
+
+    <main id="textView" class="text-view" tabindex="-1" hidden aria-label="תצוגת טקסט"></main>
+
+    <div id="overlay" class="overlay" role="status" aria-live="polite">
+      <div class="overlay-card">
+        <div class="loader" aria-hidden="true"><span>ש</span><span>מ</span><span>ע</span></div>
+        <p id="overlayText">טוען את עולם התפילות…</p>
+        <button id="overlayRetry" class="primary-btn" hidden>לנסות שוב</button>
+      </div>
+    </div>
+
+    <div id="about" class="modal" role="dialog" aria-modal="true" aria-labelledby="aboutTitle" hidden>
+      <div class="modal-card" id="aboutCard"></div>
+    </div>
+
+    <div id="live" class="sr-only" aria-live="polite"></div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
