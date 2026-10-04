@@ -25,6 +25,8 @@ jobs:
       - name: Validate content (attribution + nusach labelling)
         run: npm test
       - run: npm run build
+      - name: SPA fallback page
+        run: cp dist/index.html dist/404.html
       - name: Publish dist/ to the gh-pages branch
         uses: peaceiris/actions-gh-pages@v4
         with:
