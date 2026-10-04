@@ -17,4 +17,13 @@ async function getJSON(path) {
 export const loadWorld = () => getJSON('world.json');
 export const loadText = (id) => getJSON(`t/${id}.json`);
 export const loadPreview = (nusach) => getJSON(`preview-${nusach}.json`);
-export const loadSearch = (nusach) => getJSON(`search-${nusach}.json`);
+const FINALS = { 'ך': 'כ', 'ם': 'מ', 'ן': 'נ', 'ף': 'פ', 'ץ': 'צ' };
+const searchCache = new Map();
+/** Search index; `f` is a final-letter-folded copy of `x` (same length, so positions align). */
+export function loadSearch(nusach) {
+  if (!searchCache.has(nusach)) {
+    searchCache.set(nusach, getJSON(`search-${nusach}.json`).then((idx) => idx.map((e) => ({ ...e, f: e.x.replace(/[ךםןףץ]/g, (c) => FINALS[c]) }))));
+    searchCache.get(nusach).catch(() => searchCache.delete(nusach));
+  }
+  return searchCache.get(nusach);
+}

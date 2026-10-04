@@ -81,16 +81,49 @@ function offsetLatLon(lat, lon, bearingDeg, distDeg) {
 
 const nodeById = new Map(NODES.map((n) => [n.id, n]));
 const layout = new Map();
+// Regions dominated by one ceremony are laid out as a spiral in the ceremony's order,
+// so its route flows outward and only genuine repetitions cut back across.
+const SPIRAL_ORDER = { yk: ['yom-kippur'], rh: ['rosh-hashana'], pesach: ['pesach-seder'], chaim: ['wedding', 'brit-mila'] };
 for (const region of REGIONS) {
   const members = NODES.filter((n) => n.region === region.id);
-  // order: keep authoring order but pull important nodes toward the center
+  const routes = SPIRAL_ORDER[region.id];
+  if (routes) {
+    const order = [];
+    for (const rid of routes) for (const st of ROUTES.find((r) => r.id === rid).stops) if (!order.includes(st.n)) order.push(st.n);
+    const rank = (n) => { const i = order.indexOf(n.id); return i < 0 ? 999 : i; };
+    const sorted = [...members].sort((a, b) => rank(a) - rank(b));
+    const step = 4.7; // degrees between consecutive nodes
+    const b = (step * 1.08) / (2 * Math.PI); // ring spacing
+    let theta = 2 * Math.PI * 0.55;
+    sorted.forEach((n) => {
+      const r = b * theta;
+      layout.set(n.id, offsetLatLon(region.lat, region.lon, (theta * 180) / Math.PI, r));
+      theta += step / Math.max(r, step * 0.6);
+    });
+    continue;
+  }
+  // otherwise: sunflower, important nodes in the centre
   const ordered = [...members].sort((a, b) => (b.imp || 1) - (a.imp || 1));
-  const spacing = members.length > 14 ? 5.6 : 6.2;
+  const spacing = members.length > 20 ? 4.5 : members.length > 12 ? 4.8 : 5.2;
   ordered.forEach((n, i) => {
     const dist = i === 0 ? 0 : spacing * Math.sqrt(i + 0.15);
     const bearing = i * 137.508 + 20;
     layout.set(n.id, offsetLatLon(region.lat, region.lon, bearing, dist));
   });
+}
+
+// layout sanity: nodes of different regions should not collide
+{
+  const ids = [...layout.keys()];
+  let worst = [99, ''];
+  for (let i = 0; i < ids.length; i++) for (let j = i + 1; j < ids.length; j++) {
+    const [a1, o1] = layout.get(ids[i]), [a2, o2] = layout.get(ids[j]);
+    const c = Math.sin(a1 * deg) * Math.sin(a2 * deg) + Math.cos(a1 * deg) * Math.cos(a2 * deg) * Math.cos((o1 - o2) * deg);
+    const d = Math.acos(Math.min(1, c)) / deg;
+    if (d < worst[0]) worst = [d, ids[i] + ' ~ ' + ids[j]];
+    if (d < 3.2) warnings.push(`layout: ${ids[i]} and ${ids[j]} only ${d.toFixed(1)}° apart`);
+  }
+  console.log('closest nodes:', worst[0].toFixed(2) + '°', worst[1]);
 }
 
 // ---------- nodes ----------

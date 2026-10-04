@@ -23,8 +23,8 @@ export function makeDustTexture(world, previews, { width = 4096 } = {}) {
     const g = ctx.createRadialGradient(x, y, 0, x, y, rad);
     const col = new THREE.Color(r.color);
     const rgb = `${Math.round(col.r * 255)},${Math.round(col.g * 255)},${Math.round(col.b * 255)}`;
-    g.addColorStop(0, `rgba(${rgb},0.30)`);
-    g.addColorStop(0.5, `rgba(${rgb},0.10)`);
+    g.addColorStop(0, `rgba(${rgb},0.16)`);
+    g.addColorStop(0.5, `rgba(${rgb},0.05)`);
     g.addColorStop(1, `rgba(${rgb},0)`);
     ctx.fillStyle = g;
     ctx.beginPath(); ctx.ellipse(x, y, rad, rad, 0, 0, Math.PI * 2); ctx.fill();
@@ -98,8 +98,8 @@ export function makeTileCanvas(title, words, color = '#e8b04a', size = 1024) {
   const cx = size / 2, cy = size / 2, R = size * 0.47;
 
   const halo = ctx.createRadialGradient(cx, cy, R * 0.2, cx, cy, R);
-  halo.addColorStop(0, 'rgba(10, 12, 28, 0.82)');
-  halo.addColorStop(0.85, 'rgba(10, 12, 28, 0.62)');
+  halo.addColorStop(0, 'rgba(8, 10, 24, 0.9)');
+  halo.addColorStop(0.85, 'rgba(8, 10, 24, 0.78)');
   halo.addColorStop(1, 'rgba(10, 12, 28, 0)');
   ctx.fillStyle = halo;
   ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.fill();
@@ -119,7 +119,7 @@ export function makeTileCanvas(title, words, color = '#e8b04a', size = 1024) {
   ctx.fillText(title, cx, cy - R * 0.62);
 
   // body words
-  const fsz = Math.round(size * 0.047);
+  const fsz = Math.round(size * 0.058);
   const lh = fsz * 1.62;
   ctx.font = `400 ${fsz}px ${SERIF}`;
   ctx.fillStyle = '#f4e9cf';

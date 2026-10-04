@@ -36,7 +36,7 @@ export const angleBetween = (a, b) => Math.acos(THREE.MathUtils.clamp(a.clone().
 export function arcPoints(a, b, { segments = 48, lift = null, base = 1.004 } = {}) {
   const A = a.clone().normalize(), B = b.clone().normalize();
   const ang = angleBetween(A, B);
-  const h = lift ?? Math.min(0.45, 0.012 + ang * 0.22);
+  const h = lift ?? Math.min(0.09, 0.008 + ang * 0.06);
   const pts = [];
   const n = Math.max(6, Math.round(segments * Math.min(1, 0.25 + ang)));
   for (let i = 0; i <= n; i++) {

@@ -26,6 +26,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html, body { margin: 0; height: 100%; }
 body {
   background: radial-gradient(1200px 800px at 70% 30%, #101633 0%, var(--night) 60%) fixed, var(--night);

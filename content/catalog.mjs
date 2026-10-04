@@ -18,18 +18,18 @@
 export const R = (book, path, opts = {}) => ({ book, path: path ? path.split('/') : [], ...opts });
 
 export const REGIONS = [
-  { id: 'boker', name: 'השכמת הבוקר', lat: 38, lon: -18, color: '#ffd27a' },
-  { id: 'shacharit', name: 'שחרית', lat: 12, lon: 8, color: '#ffc35a' },
-  { id: 'erev', name: 'מנחה וערבית', lat: -18, lon: -14, color: '#9db8ff' },
-  { id: 'shabbat', name: 'שבת', lat: 14, lon: 62, color: '#f6d58f' },
-  { id: 'seuda', name: 'סעודה וברכות', lat: -24, lon: 44, color: '#e9c38a' },
-  { id: 'chaim', name: 'מעגל החיים', lat: -52, lon: 96, color: '#ffb3c7' },
-  { id: 'moadim', name: 'מועדים', lat: 26, lon: 128, color: '#a9e6a1' },
-  { id: 'pesach', name: 'ליל הסדר', lat: -8, lon: 168, color: '#c6f08f' },
-  { id: 'rh', name: 'ראש השנה', lat: 30, lon: -88, color: '#f4a8ff' },
-  { id: 'yk', name: 'יום הכיפורים', lat: -6, lon: -128, color: '#ffffff' },
-  { id: 'taaniot', name: 'תעניות ואבל', lat: -46, lon: -62, color: '#9fb0c8' },
-  { id: 'sod', name: 'סוד ותיקונים', lat: 62, lon: 92, color: '#ffe08a' },
+  { id: 'shacharit', name: 'שחרית', lat: 12, lon: 0, color: '#ffc35a' },
+  { id: 'boker', name: 'השכמת הבוקר', lat: 44, lon: -6, color: '#ffd27a' },
+  { id: 'erev', name: 'מנחה וערבית', lat: -22, lon: -4, color: '#9db8ff' },
+  { id: 'rh', name: 'ראש השנה', lat: 30, lon: -46, color: '#f4a8ff' },
+  { id: 'yk', name: 'יום הכיפורים', lat: -4, lon: -60, color: '#ffffff' },
+  { id: 'taaniot', name: 'תעניות ואבל', lat: -44, lon: -50, color: '#9fb0c8' },
+  { id: 'chaim', name: 'מעגל החיים', lat: -52, lon: 4, color: '#ffb3c7' },
+  { id: 'seuda', name: 'סעודה וברכות', lat: -26, lon: 42, color: '#e9c38a' },
+  { id: 'shabbat', name: 'שבת', lat: 14, lon: 46, color: '#f6d58f' },
+  { id: 'sod', name: 'סוד ותיקונים', lat: 58, lon: 50, color: '#ffe08a' },
+  { id: 'moadim', name: 'מועדים', lat: 22, lon: 96, color: '#a9e6a1' },
+  { id: 'pesach', name: 'ליל הסדר', lat: -20, lon: 92, color: '#c6f08f' },
 ];
 
 export const NODES = [
@@ -185,7 +185,7 @@ export const NODES = [
     rel: [['related', 'vidui-yk', 'אותו וידוי בהרחבה']],
   },
   {
-    id: 'avinu-malkenu', region: 'shacharit', title: 'אבינו מלכנו', k: 'conditional', imp: 2,
+    id: 'avinu-malkenu', region: 'rh', title: 'אבינו מלכנו', k: 'conditional', imp: 2,
     d: 'שורת בקשות הפותחות ״אבינו מלכנו״, שמקורה בתפילת רבי עקיבא בתענית (תענית כה ע״ב).',
     w: 'בעשרת ימי תשובה ובימי תענית ציבור.',
     v: 'מספר השורות ונוסחן שונים מאוד בין העדות. בשבת אין אומרים בדרך כלל, אך במחזור עדות המזרח מצוין שביום הכיפורים אומרים אותו ״ואפילו בשבת״.',
@@ -430,7 +430,7 @@ export const NODES = [
     },
   },
   {
-    id: 'birkat-habanim', region: 'shabbat', title: 'ברכת הבנים', k: 'custom', imp: 1,
+    id: 'birkat-habanim', region: 'chaim', title: 'ברכת הבנים', k: 'custom', imp: 1,
     d: 'ההורים מברכים את הילדים: ״ישימך אלוהים כאפרים וכמנשה״ / ״כשרה רבקה רחל ולאה״ וברכת כהנים.',
     w: 'בליל שבת, ובערב יום הכיפורים לפני הכניסה לבית הכנסת.',
     t: {
@@ -1177,7 +1177,7 @@ export const NODES = [
       ash: R('ykAsh', 'Maariv Service for Yom Kippur Eve/Amidah'),
       sef: R('ykSef', 'Maariv Service for Yom Kippur Eve/Amidah'),
     },
-    rel: [['contains', 'vidui-yk']],
+    rel: [['contains', 'vidui-yk'], ['related', 'neila', 'העמידה החמישית נאמרת בנעילה']],
   },
   {
     id: 'vidui-yk', region: 'yk', title: 'וידוי: אשמנו ועל חטא', k: 'core', imp: 3,
@@ -1301,9 +1301,9 @@ export const NODES = [
     d: 'התפילה החמישית והאחרונה, ״בשעת נעילת שערים״. במקום ״כתבנו״ אומרים ״חתמנו״; וידוי קצר ו״אתה נותן יד לפושעים״. ארון הקודש פתוח, ורבים עומדים עד סופה.',
     w: 'לקראת שקיעת החמה בסוף יום הכיפורים.',
     t: {
-      em: [R('ykEm', 'Neilah/Amidah'), R('ykEm', "Neilah/Reader's Repetition")],
-      ash: [R('ykAsh', 'Neilah; Concluding Service/Amidah for Neilah'), R('ykAsh', "Neilah; Concluding Service/Reader's Repetition of the Amidah")],
-      sef: [R('ykSef', 'Neilah Service/Amidah'), R('ykSef', "Neilah Service/Reader's Repetition")],
+      em: [R('ykEm', 'Neilah/Ashrei'), R('ykEm', "Neilah/Reader's Repetition")],
+      ash: [R('ykAsh', 'Neilah; Concluding Service/Ashrei'), R('ykAsh', "Neilah; Concluding Service/Reader's Repetition of the Amidah")],
+      sef: [R('ykSef', 'Neilah Service/Ashrei'), R('ykSef', "Neilah Service/Reader's Repetition")],
     },
     kav: R('shaarKavanot', 'Sermons on Yom Kippur', { from: 4, count: 4 }),
   },

@@ -12,7 +12,7 @@ import { makeDustTexture, makeTileCanvas } from './textures.js';
 
 const REL_COLORS = { contains: '#f2c86b', adds: '#8ee0a6', varies: '#c9a2ff', related: '#8fb6ff' };
 const REL_DASH = { contains: [1, 0], adds: [0.012, 0.008], varies: [0.004, 0.007], related: [1, 0] };
-const MIN_ALT = 0.07, MAX_ALT = 3.4, HOME_ALT = 2.25;
+const MIN_ALT = 0.07, MAX_ALT = 4.6, HOME_ALT = 3.1;
 const NODE_R = 1.004;
 
 export class Globe {
@@ -34,7 +34,7 @@ export class Globe {
 
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(40, 1, 0.003, 200);
-    this.clock = new THREE.Clock();
+    this.clock = new THREE.Timer();
     this.time = 0;
 
     // camera rig state
@@ -45,6 +45,8 @@ export class Globe {
     this.lastInteraction = performance.now();
     this.dirty = true;
 
+    this.insets = { left: 0, right: 0, bottom: 0, top: 0 };
+    this.viewOff = { x: 0, y: 0 };
     this.selectedId = null;
     this.route = null;
     this.stopIndex = -1;
@@ -111,7 +113,7 @@ export class Globe {
     const geo = new THREE.SphereGeometry(1, 160, 120);
     this.globeMat = new THREE.ShaderMaterial({
       uniforms: {
-        uDust: { value: null }, uTime: { value: 0 }, uHasDust: { value: 0 },
+        uDust: { value: null }, uTime: { value: 0 }, uHasDust: { value: 0 }, uDustK: { value: 1 },
         uLight: { value: new THREE.Vector3(-0.5, 0.6, 0.8).normalize() },
         uCam: { value: new THREE.Vector3() },
       },
@@ -120,7 +122,7 @@ export class Globe {
         void main(){ vN = normalize(normal); vUv = uv; vec4 w = modelMatrix*vec4(position,1.); vW = w.xyz;
           gl_Position = projectionMatrix*viewMatrix*w; }`,
       fragmentShader: /* glsl */ `
-        uniform sampler2D uDust; uniform float uHasDust; uniform float uTime; uniform vec3 uLight; uniform vec3 uCam;
+        uniform sampler2D uDust; uniform float uHasDust; uniform float uDustK; uniform float uTime; uniform vec3 uLight; uniform vec3 uCam;
         varying vec3 vN; varying vec2 vUv; varying vec3 vW;
         float gridLine(float x, float w){ float f = abs(fract(x)-0.5); return smoothstep(w, 0.0, 0.5-f); }
         void main(){
@@ -128,14 +130,14 @@ export class Globe {
           vec3 v = normalize(uCam - vW);
           float fres = pow(1.0 - max(dot(n, v), 0.0), 2.6);
           float lit = 0.5 + 0.5*dot(n, uLight);
-          vec3 base = mix(vec3(0.010,0.014,0.040), vec3(0.040,0.055,0.120), lit);
+          vec3 base = mix(vec3(0.006,0.009,0.028), vec3(0.030,0.042,0.098), lit);
           // astrolabe grid: every 15 degrees
           float lat = vUv.y*180.0, lon = vUv.x*360.0;
           float g = max(gridLine(lat/15.0, 0.012), gridLine(lon/15.0, 0.010*max(0.25, sin(vUv.y*3.14159))));
           base += vec3(0.55,0.42,0.20)*g*0.10;
           vec4 dust = uHasDust > 0.5 ? texture2D(uDust, vUv) : vec4(0.);
-          base += dust.rgb * dust.a * (0.9 + 0.25*lit);
-          base += mix(vec3(0.95,0.70,0.32), vec3(0.45,0.55,1.0), 0.45) * fres * 0.85;
+          base += dust.rgb * dust.a * (0.9 + 0.25*lit) * uDustK;
+          base += mix(vec3(0.95,0.70,0.32), vec3(0.45,0.55,1.0), 0.5) * fres * 0.3;
           gl_FragColor = vec4(base, 1.0);
         }`,
     });
@@ -144,15 +146,15 @@ export class Globe {
 
     // atmosphere
     const atm = new THREE.Mesh(
-      new THREE.SphereGeometry(1.16, 96, 64),
+      new THREE.SphereGeometry(1.12, 96, 64),
       new THREE.ShaderMaterial({
         uniforms: { uCam: { value: new THREE.Vector3() } },
         vertexShader: /* glsl */ `varying vec3 vN; varying vec3 vW; void main(){ vN = normalize(normal); vec4 w = modelMatrix*vec4(position,1.); vW=w.xyz; gl_Position = projectionMatrix*viewMatrix*w; }`,
         fragmentShader: /* glsl */ `uniform vec3 uCam; varying vec3 vN; varying vec3 vW;
           void main(){ vec3 v = normalize(uCam - vW); float d = dot(normalize(vN), v);
-            float a = pow(clamp(1.0 + d*1.15, 0.0, 1.0), 3.0);
-            vec3 c = mix(vec3(0.55,0.6,1.0), vec3(1.0,0.78,0.4), 0.4);
-            gl_FragColor = vec4(c*a*0.9, a*0.85); }`,
+            float a = pow(clamp(-d*2.1, 0.0, 1.0), 2.2) * 0.42;
+            vec3 c = mix(vec3(0.42,0.5,1.0), vec3(1.0,0.76,0.38), 0.35);
+            gl_FragColor = vec4(c*a, a); }`,
         side: THREE.BackSide, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
       }),
     );
@@ -169,7 +171,7 @@ export class Globe {
     try {
       const composer = new EffectComposer(this.renderer);
       composer.addPass(new RenderPass(this.scene, this.camera));
-      this.bloom = new UnrealBloomPass(new THREE.Vector2(512, 512), 0.55, 0.6, 0.72);
+      this.bloom = new UnrealBloomPass(new THREE.Vector2(512, 512), 0.5, 0.38, 0.78);
       composer.addPass(this.bloom);
       composer.addPass(new OutputPass());
       this.composer = composer;
@@ -365,7 +367,7 @@ export class Globe {
       const a = stopPts[i], b = stopPts[i + 1];
       const ang = angleBetween(a, b);
       // vary lift so repeated legs between the same places don't overlap
-      const lift = Math.min(0.4, 0.02 + ang * 0.2) * (1 + (i % 3) * 0.12);
+      const lift = Math.min(0.075, 0.008 + ang * 0.06) * (1 + (i % 3) * 0.25);
       const seg = ang < 1e-4 ? [a.clone(), b.clone()] : arcPoints(a, b, { segments: 56, lift, base: NODE_R });
       legStarts.push(pts.length);
       if (pts.length) seg.shift();
@@ -376,10 +378,10 @@ export class Globe {
     if (pts.length >= 2) {
       const flat = pts.flatMap((p) => [p.x, p.y, p.z]);
       const under = new LineGeometry(); under.setPositions(flat);
-      const glow = new Line2(under, this._makeLineMat('#e8b04a', 7, { opacity: 0.16 }));
+      const glow = new Line2(under, this._makeLineMat('#e8b04a', 6, { opacity: 0.1 }));
       glow.computeLineDistances();
       const over = new LineGeometry(); over.setPositions(flat);
-      this.routeMat = this._makeLineMat('#ffe7b0', 2.6, { dashed: true, dashSize: 0.03, gapSize: 0.018, opacity: 0.95 });
+      this.routeMat = this._makeLineMat('#ffe2a0', 2.2, { dashed: true, dashSize: 0.022, gapSize: 0.014, opacity: 0.85 });
       const line = new Line2(over, this.routeMat);
       line.computeLineDistances();
       glow.renderOrder = line.renderOrder = 4;
@@ -533,12 +535,20 @@ export class Globe {
     // look slightly above the surface point so the horizon reads well when tilted
     this.camera.lookAt(P);
     this.camera.near = Math.max(0.002, this.alt * 0.05);
+    // keep the focus point centred in the area not covered by panels
+    const tx = (this.insets.right - this.insets.left) / 2, ty = (this.insets.bottom - this.insets.top) / 2;
+    const k = this.reduceMotion ? 1 : 0.12;
+    this.viewOff.x += (tx - this.viewOff.x) * k;
+    this.viewOff.y += (ty - this.viewOff.y) * k;
+    if (Math.abs(this.viewOff.x) + Math.abs(this.viewOff.y) > 0.5) this.camera.setViewOffset(this.width, this.height, this.viewOff.x, this.viewOff.y, this.width, this.height);
+    else this.camera.clearViewOffset();
     this.camera.updateProjectionMatrix();
     this.camera.updateMatrixWorld();
     this.globeMat.uniforms.uCam.value.copy(cam);
     this.atmosphere.material.uniforms.uCam.value.copy(cam);
     this.nebula.position.copy(cam.clone().normalize().multiplyScalar(-6));
     this.nodeMat.uniforms.uAlt.value = this.alt;
+    this.globeMat.uniforms.uDustK.value = 0.18 + 0.82 * smoothstep(0.12, 0.85, this.alt);
   }
 
   // ───────────────────────── input ─────────────────────────
@@ -667,8 +677,14 @@ export class Globe {
     return best;
   }
 
+  setInsets(insets) { this.insets = { left: 0, right: 0, bottom: 0, top: 0, ...insets }; this.dirty = true; }
+
+  /** Screen point that the camera focus maps to (centre of the free area). */
+  get focusScreen() { return { x: this.width / 2 - this.viewOff.x, y: this.height / 2 - this.viewOff.y }; }
+
   pickCenter() {
-    return this._nearestNode(this.width / 2 + this.canvas.getBoundingClientRect().left, this.height / 2 + this.canvas.getBoundingClientRect().top, 140);
+    const r = this.canvas.getBoundingClientRect(), c = this.focusScreen;
+    return this._nearestNode(c.x + r.left, c.y + r.top, 140);
   }
 
   _hover(e) {
@@ -751,14 +767,18 @@ export class Globe {
   _loop() {
     requestAnimationFrame(this._loop);
     if (document.hidden) return;
-    const dt = Math.min(0.05, this.clock.getDelta());
+    this.clock.update(); const dt = Math.min(0.05, this.clock.getDelta());
     this.time += dt;
     this._updateCamera();
     const t = this.time;
     this.starMat.uniforms.uTime.value = this.reduceMotion ? 0 : t;
     this.nodeMat && (this.nodeMat.uniforms.uTime.value = t);
 
-    if (this.routeMat && !this.reduceMotion) this.routeMat.dashOffset = -t * 0.06;
+    if (this.routeMat) {
+      if (!this.reduceMotion) this.routeMat.dashOffset = -t * 0.06;
+      // let the prayer words win when reading up close
+      this.routeMat.opacity = 0.28 + 0.57 * smoothstep(0.2, 0.85, this.alt);
+    }
     if (this.comet && this.routePts?.length > 1) {
       const total = this.routeCum[this.routeCum.length - 1];
       const speed = Math.max(0.06, total / 22);
@@ -776,7 +796,7 @@ export class Globe {
     this._updateTiles();
 
     if (this.composer) {
-      this.bloom.strength = 0.35 + 0.35 * smoothstep(0.3, 1.8, this.alt);
+      this.bloom.strength = (this.route ? 0.22 : 0.35) + (this.route ? 0.12 : 0.3) * smoothstep(0.3, 1.8, this.alt);
       this.composer.render();
     } else this.renderer.render(this.scene, this.camera);
     this.opts.onFrame?.(this.alt);
@@ -814,7 +834,8 @@ export class Globe {
       if (l.state >= 2) vis = Math.max(vis, smoothstep(2.8, 1.6, alt));
       if (l.state >= 3) vis = 1;
       if (l.state === 1) vis *= 0.45;
-      const centerDist = Math.hypot(p.x - W / 2, p.y - H / 2) / Math.hypot(W / 2, H / 2);
+      const fc = this.focusScreen;
+      const centerDist = Math.hypot(p.x - fc.x, p.y - fc.y) / Math.hypot(W / 2, H / 2);
       const prio = (l.state >= 3 ? 100 : 0) + (l.state === 2 ? 20 : 0) + n.imp * 5 - centerDist * 6 + (this.hoverId === n.id ? 50 : 0);
       if (vis * horizon > 0.02) candidates.push({ i, p, vis: vis * horizon, prio });
     });
@@ -849,7 +870,7 @@ export class Globe {
     for (const r of this.regionLabels) {
       const facing = r.pos.dot(cam) - 1.01;
       const p = this._project(r.pos, {});
-      const vis = facing > 0 ? smoothstep(0.0, 0.25, facing) * smoothstep(0.55, 1.25, alt) * (this.route ? 0.5 : 1) : 0;
+      const vis = facing > 0 && !this.route ? smoothstep(0.0, 0.25, facing) * smoothstep(0.55, 1.25, alt) : 0;
       r.op += (vis - r.op) * (this.reduceMotion ? 1 : 0.15);
       r.el.style.opacity = r.op < 0.01 ? '0' : r.op.toFixed(3);
       if (r.op >= 0.01) {
@@ -864,7 +885,7 @@ export class Globe {
       const p = this._project(b.pos, {});
       const vis = facing > 0 ? smoothstep(0, 0.04, facing) * smoothstep(3.2, 1.2, alt) : 0;
       b.el.style.opacity = vis.toFixed(3);
-      if (vis > 0.01) b.el.style.transform = `translate(${(p.x - 10).toFixed(1)}px, ${(p.y - 10).toFixed(1)}px)`;
+      if (vis > 0.01) b.el.style.transform = `translate(${(p.x + 4).toFixed(1)}px, ${(p.y + 2).toFixed(1)}px)`;
     }
   }
 
@@ -879,7 +900,8 @@ export class Globe {
       this.nodes.forEach((n, i) => {
         const p = this._proj[i];
         if (!p?.visible) return;
-        const d = Math.hypot(p.x - W / 2, p.y - H / 2) / Math.hypot(W / 2, H / 2);
+        const fc = this.focusScreen;
+        const d = Math.hypot(p.x - fc.x, p.y - fc.y) / Math.hypot(W / 2, H / 2);
         if (d < 0.95) list.push({ i, d });
       });
       list.sort((a, b) => a.d - b.d);
