@@ -53,9 +53,14 @@ surrounded by glass instrument panels with letter-spaced micro-labels, monospace
 * **The tree and the evening sky.** The ladder stands in a meadow at dusk ("וילן שם כי בא השמש"). Grass moves in a
   slow wind and the stones of the place ("ויקח מאבני המקום") lie around its foot. The pillar of words is a tree
   trunk: it flares into roots in the grass, and the prayers' words are carved into the bark and glow gold. Above the
-  ladder's head the branches fan out into a crown of leaves, open in the middle where the sun stands — the light at the
-  top of the ladder. The sky has a warm horizon, thin clouds and the first stars, its haze meets the meadow without a
-  seam, and the metal and leaves reflect it. Grass and leaf density follow the quality preset.
+  ladder's head the trunk divides into six great limbs that rise, curve outward and branch four times into a wide
+  crown, like an old terebinth. The leaves grow in sprigs gathered into masses, deep green inside and lighter on the
+  outside. The sun stands in an open hollow under the crown at the top of the ladder: it lights the limbs and the
+  undersides of the leaves gold and shines through them where you look towards it. The leaves move in the wind,
+  motes of light rise around the sun and a few leaves drift down. All of this stops when motion is reduced. The crown
+  stays above the ladder's top turn, so it never hides the ladder or the prayers. The sky has a warm horizon, thin
+  clouds and the first stars, its haze meets the meadow without a seam, and the metal reflects it. The overview frames the whole tree
+  between the panels. Grass and leaf density, and the motes, follow the quality preset.
 * **Four worlds, one turn each.** Bottom to top: עשיה, יצירה, בריאה, אצילות. The Ari (Sha'ar HaKavanot, Sermons on
   Morning Prayers 1) divides Shacharit this way: from the start of the prayer to Baruch She'amar — Asiyah; to Yotzer Or —
   Yetzirah; to the end of the Avot blessing — Beriah; the rest of the Amidah — Atzilut; and in Nefilat Apayim "he stands

@@ -13,13 +13,15 @@ import { cyl, radialAt, angleOf, angleDelta, smoothstep, easeInOutCubic, D2R } f
 import { makePillarTexture, makeMedallion } from './textures';
 import { createSkyEnvironment } from './environment';
 import { createMotes, TABLE_Y } from './instrument';
-import { createSky, createGround, createGrass, createStones, createTree, makeRaysTexture, SKY } from './nature';
+import { createSky, createGround, createGrass, createStones, createTree, makeRaysTexture, SKY, type Tree } from './nature';
 import { Pipeline } from '../render/Pipeline';
 import type { QualityPreset } from '../render/quality';
 
 const REL_COLORS: Record<string, string> = { contains: '#ffd27a', adds: '#5dffa2', varies: '#c9a2ff', related: '#7fb2ff' };
-export const MIN_D = 0.14, MAX_D = 17;
+export const MIN_D = 0.14, MAX_D = 26;
 const PILLAR_R = 0.42;
+/** the sun stands this high above the ladder's head */
+const SUN_H = 0.95;
 const TILE = 0.1;
 const TILT = 34 * D2R; // medallions lean back toward a camera looking down the steps
 const ROMAN = ['I', 'II', 'III', 'IV'];
@@ -80,7 +82,9 @@ export class PrayerWorld {
   private sky!: THREE.Mesh;
   private grass: THREE.Mesh | null = null;
   private rays: THREE.Sprite | null = null;
-  private canopy: THREE.Group | null = null;
+  private tree: Tree | null = null;
+  /** top of the crown and its horizontal reach, for framing the overview */
+  private crown = { top: 5.4, r: 3.4 };
   private ladder = new THREE.Group();
   private pillar!: THREE.Mesh;
   private pillarMat!: THREE.ShaderMaterial;
@@ -128,6 +132,8 @@ export class PrayerWorld {
   // camera rig: a target, an azimuth around the ladder's axis and a distance
   view: View = { t: new THREE.Vector3(0, 0.4, 0), az: 0.3, d: 9 };
   private flight: Flight | null = null;
+  /** the camera rests on (or is flying to) the overview of the whole tree, and follows it when the panels or the crown change */
+  private atHome = false;
   private vel = { az: 0, y: 0 };
   private dragging = false;
   private lastInteraction = performance.now();
@@ -224,6 +230,7 @@ export class PrayerWorld {
     if (first) this.pipeline = new Pipeline(this.renderer, this.scene, this.camera, p.msaa, p.bloomLevels);
     else this.pipeline.setMultisampling(p.msaa);
     if (!first && this.world) {
+      this.buildTree();
       for (const t of this.tiles.values()) this.disposeTile(t);
       this.tiles.clear();
       this.setPreviews(this.previews);
@@ -243,14 +250,37 @@ export class PrayerWorld {
     this.buildNodes();
     this.buildRelations();
     this.buildLabels();
-    this.view = { t: new THREE.Vector3(0, this.midY, 0), az: 0.35, d: this.homeD() * 1.25 };
+    this.view = { t: new THREE.Vector3(0, this.midY, 0), az: 0.35, d: Math.min(MAX_D, this.homeD() * 1.25) };
   }
 
-  private get midY(): number { return (TABLE_Y - 0.3 + this.L.top + 2.0) / 2; }
+  /** the overview frames the whole tree: from the grass at its foot to the caption above its crown */
+  private get frameY(): [number, number] { return [TABLE_Y - 0.3, this.crown.top + 0.5]; }
+  /** height the overview looks at: the middle of the frame, or — when the space between the panels is too small for the
+   * whole tree — just low enough that the crown and the sun stay in view (the meadow at the foot goes under the panel) */
+  private get midY(): number {
+    const [y0, y1] = this.frameY;
+    const freeH = Math.max(0.35, (this.height - this.insets.top - this.insets.bottom) / this.height);
+    const half = (this.homeD() / 1.03) * Math.tan((this.camera.fov * D2R) / 2) * freeH;
+    return Math.max((y0 + y1) / 2, y1 - half);
+  }
 
   /** unwrapped helix angle (deg) of a node: world index × 360 + its sector angle */
   private unwrapped(n: PrayerNode): number { return this.world.worlds.findIndex((w) => w.id === n.world) * 360 + n.a; }
   private helixY(u: number): number { return this.L.base + (u / 360) * this.L.turnH; }
+
+  /** the tree: roots into the meadow, and a great crown of branches and leaves spreading above the ladder's head */
+  private buildTree(): void {
+    if (this.tree) { this.ladder.remove(this.tree.group); this.tree.dispose(); }
+    const top = this.L.top;
+    this.tree = createTree({
+      trunkR: PILLAR_R, bottom: TABLE_Y, top: top + 0.12, sun: new THREE.Vector3(0, top + SUN_H, 0), clearY: top + 0.35,
+      leaves: this.preset.leaves, sparks: this.preset.sparks,
+    });
+    this.crown = { top: this.tree.maxY, r: this.tree.radius };
+    this.tree.setPixelHeight(this.height * this.renderer.getPixelRatio());
+    this.ladder.add(this.tree.group);
+    this.reframeHome();
+  }
 
   private buildLadder(): void {
     const { rIn, rOut, turns, top } = this.L;
@@ -372,9 +402,7 @@ export class PrayerWorld {
     const cap = new THREE.Mesh(new THREE.CircleGeometry(PILLAR_R * 1.02, 64).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: '#3b2a1c', roughness: 1 }));
     cap.position.y = ptop - 0.001;
     this.ladder.add(cap);
-    const tree = createTree({ trunkR: PILLAR_R, bottom, top: ptop, leaves: this.preset.leaves });
-    this.canopy = tree.group;
-    this.ladder.add(tree.group);
+    this.buildTree();
 
     // world boundaries: faint level rings where each turn ends
     for (let w = 0; w <= turns; w++) {
@@ -397,7 +425,7 @@ export class PrayerWorld {
     const core = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture([[0, 'rgba(255,255,255,1)'], [0.3, 'rgba(255,240,200,0.6)'], [1, 'rgba(255,240,200,0)']]), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
     core.scale.setScalar(0.95);
     this.heaven.add(halo, core, this.rays);
-    this.heaven.position.y = top + 0.95;
+    this.heaven.position.y = top + SUN_H;
     this.ladder.add(this.heaven);
 
     // angels ascending and descending
@@ -560,7 +588,7 @@ export class PrayerWorld {
       return { el, pos, w: 0, h: 0, op: 0, far };
     };
     this.captions = [
-      caption('וְרֹאשׁוֹ מַגִּיעַ הַשָּׁמָיְמָה<span class="v">בראשית כח, יב</span>', new THREE.Vector3(0, this.L.top + 2.05, 0), 3.2),
+      caption('וְרֹאשׁוֹ מַגִּיעַ הַשָּׁמָיְמָה<span class="v">בראשית כח, יב</span>', new THREE.Vector3(0, this.crown.top + 0.2, 0), 3.2),
       caption('סֻלָּם מֻצָּב אַרְצָה', new THREE.Vector3(0, this.L.base + 0.05, 0), 3.2),
     ];
     this.focusTag = document.createElement('div');
@@ -764,19 +792,36 @@ export class PrayerWorld {
     const fov = this.camera.fov * D2R;
     const freeH = Math.max(0.35, (this.height - this.insets.top - this.insets.bottom) / this.height);
     const freeW = Math.max(0.35, (this.width - this.insets.left - this.insets.right) / this.width);
-    const h = this.L.top + 2.1 - TABLE_Y;
-    const byH = h / 2 / Math.tan(fov / 2) / freeH;
+    const [y0, y1] = this.frameY;
+    const byH = (y1 - y0) / 2 / Math.tan(fov / 2) / freeH;
+    // on a narrow screen the tips of the widest branches may run past the sides; the ladder and the sun may not
+    const w = Math.max(6.2, 2 * this.crown.r * (this.camera.aspect * freeW < 1 ? 0.8 : 1));
+    const byW = w / 2 / Math.tan(fov / 2) / (this.camera.aspect * freeW);
+    return THREE.MathUtils.clamp(Math.max(byH, byW) * 1.03, 4, MAX_D);
+  }
+
+  /** distance that frames the ladder itself with the sun above it (not the whole crown): regions and routes are seen from here */
+  private ladderD(): number {
+    const fov = this.camera.fov * D2R;
+    const freeH = Math.max(0.35, (this.height - this.insets.top - this.insets.bottom) / this.height);
+    const freeW = Math.max(0.35, (this.width - this.insets.left - this.insets.right) / this.width);
+    const byH = (this.L.top + 2.1 - TABLE_Y) / 2 / Math.tan(fov / 2) / freeH;
     const byW = 6.2 / 2 / Math.tan(fov / 2) / (this.camera.aspect * freeW);
-    return THREE.MathUtils.clamp(Math.max(byH, byW) * 1.3, 4, MAX_D);
+    return THREE.MathUtils.clamp(Math.max(byH, byW) * 1.3, 4, 17);
   }
 
   /** close up the camera looks down onto the rungs (like down a stair); far away, level with the ladder */
-  private elevation(d: number): number { return THREE.MathUtils.lerp(34, 7, smoothstep(0.6, 5, d)) * D2R; }
+  private elevation(d: number): number {
+    // from far away, nearly level with the sun at the head of the ladder, so it shines out under the crown
+    const far = THREE.MathUtils.lerp(7, 3.5, smoothstep(9, 20, d));
+    return THREE.MathUtils.lerp(34, far, smoothstep(0.6, 5, d)) * D2R;
+  }
 
   flyTo(to: View, opts: { duration?: number } = {}): Promise<void> {
     const from: View = { t: this.view.t.clone(), az: this.view.az, d: this.view.d };
     to = { t: to.t.clone(), az: from.az + angleDelta(from.az / D2R, to.az / D2R) * D2R, d: THREE.MathUtils.clamp(to.d, MIN_D, MAX_D) };
     this.flight?.resolve();
+    this.atHome = false;
     if (this.travel) { const tr = this.travel; this.travel = null; tr.resolve(); }
     this.vel.az = this.vel.y = 0;
     if (this.reduceMotion) {
@@ -786,12 +831,21 @@ export class PrayerWorld {
     }
     const travel = from.t.distanceTo(to.t) + Math.abs(to.az - from.az) * 0.6;
     const dur = opts.duration ?? THREE.MathUtils.clamp(900 + travel * 380 + Math.abs(Math.log(to.d / from.d)) * 260, 900, 2600);
-    const peak = Math.max(from.d, to.d, Math.min(this.homeD() * 0.6, travel * 0.9));
+    const peak = Math.max(from.d, to.d, Math.min(this.ladderD() * 0.6, travel * 0.9));
     return new Promise((resolve) => { this.flight = { from, to, peak, t0: performance.now(), dur, resolve }; });
   }
 
   flyHome(opts: { duration?: number } = {}): Promise<void> {
-    return this.flyTo({ t: new THREE.Vector3(0, this.midY, 0), az: this.view.az, d: this.homeD() }, opts);
+    const p = this.flyTo({ t: new THREE.Vector3(0, this.midY, 0), az: this.view.az, d: this.homeD() }, opts);
+    this.atHome = true;
+    return p;
+  }
+
+  /** keep the overview framed when the space between the panels changes (they settle after the first flight starts) */
+  private reframeHome(): void {
+    if (!this.atHome || !this.world) return;
+    const to = this.flight?.to ?? this.view;
+    if (Math.abs(Math.log(this.homeD() / to.d)) > 0.03 || Math.abs(to.t.y - this.midY) > 0.05) void this.flyHome({ duration: 1400 });
   }
 
   flyToNode(id: string, d = 0.46): Promise<void> {
@@ -811,6 +865,7 @@ export class PrayerWorld {
     const node = this.route?.stops[to]?.n;
     if (!seg || seg.length < 3 || this.reduceMotion || !node) return node ? this.flyToNode(node) : Promise.resolve();
     this.cancelFlight();
+    this.atHome = false;
     this.travel?.resolve();
     const cum = [0];
     for (let i = 1; i < seg.length; i++) cum.push(cum[i - 1] + seg[i].distanceTo(seg[i - 1]));
@@ -851,7 +906,7 @@ export class PrayerWorld {
   flyToRegion(id: string): Promise<void> {
     const r = this.world.regionMap.get(id);
     if (!r) return Promise.resolve();
-    return this.flyTo({ t: cyl(r.a, 0.7, (this.L.base + this.L.top) / 2), az: r.a * D2R, d: this.homeD() * 0.72 });
+    return this.flyTo({ t: cyl(r.a, 0.7, (this.L.base + this.L.top) / 2), az: r.a * D2R, d: this.ladderD() * 0.72 });
   }
 
   overview(): Promise<void> {
@@ -869,7 +924,7 @@ export class PrayerWorld {
     const az = Math.atan2(sx, sz);
     const fov = this.camera.fov * D2R;
     const freeH = Math.max(0.35, (this.height - this.insets.top - this.insets.bottom) / this.height);
-    const d = THREE.MathUtils.clamp(((y1 - y0 + 0.7) / 2 / Math.tan(fov / 2) / freeH) * (1 + (1 - k) * 0.5), 1.6, this.homeD());
+    const d = THREE.MathUtils.clamp(((y1 - y0 + 0.7) / 2 / Math.tan(fov / 2) / freeH) * (1 + (1 - k) * 0.5), 1.6, this.ladderD());
     return this.flyTo({ t: cyl(az / D2R, 0.95 * k, (y0 + y1) / 2), az, d });
   }
 
@@ -884,7 +939,7 @@ export class PrayerWorld {
     const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), dAz);
     this.view.t.applyQuaternion(q);
     this.view.az += dAz;
-    this.view.t.y = THREE.MathUtils.clamp(this.view.t.y + dy, TABLE_Y + 0.1, this.L.top + 0.9);
+    this.view.t.y = THREE.MathUtils.clamp(this.view.t.y + dy, TABLE_Y + 0.1, Math.max(this.L.top + 0.9, this.midY));
     this.cancelFlight();
     this.touch();
   }
@@ -898,10 +953,13 @@ export class PrayerWorld {
     tr?.resolve();
   }
 
-  setInsets(i: Partial<typeof this.insets>): void { this.insets = { left: 0, right: 0, top: 0, bottom: 0, ...i }; }
+  setInsets(i: Partial<typeof this.insets>): void {
+    this.insets = { left: 0, right: 0, top: 0, bottom: 0, ...i };
+    this.reframeHome();
+  }
   get focusScreen(): { x: number; y: number } { return { x: this.width / 2 - this.viewOff.x, y: this.height / 2 - this.viewOff.y }; }
   get distance(): number { return this.view.d; }
-  private touch(): void { this.lastInteraction = performance.now(); }
+  private touch(): void { this.lastInteraction = performance.now(); this.atHome = false; }
   private unitsPerPx(): number { return (2 * this.view.d * Math.tan((this.camera.fov * D2R) / 2)) / (this.height || 800); }
 
   private updateCamera(): void {
@@ -1142,6 +1200,7 @@ export class PrayerWorld {
     if (this.nodeMat) this.nodeMat.uniforms.uPR.value = pr;
     if (this.angelMat) this.angelMat.uniforms.uPR.value = pr;
     if (this.motes) (this.motes.material as THREE.ShaderMaterial).uniforms.uPR.value = pr;
+    this.tree?.setPixelHeight(h * pr);
   }
 
   setReduceMotion(v: boolean): void {
@@ -1171,7 +1230,7 @@ export class PrayerWorld {
     this.updateAngels(dt);
     this.heaven.children[0].scale.setScalar(3.6 + (this.reduceMotion ? 0 : Math.sin(this.time * 0.6) * 0.15));
     if (this.rays) this.rays.material.rotation = t * 0.02;
-    if (this.canopy) this.canopy.rotation.z = Math.sin(t * 0.35) * 0.004; // a breath of wind in the crown
+    this.tree?.update(t, this.reduceMotion ? 0 : 1); // wind in the crown
     (this.sky.material as THREE.ShaderMaterial).uniforms.uTime.value = t;
     if (this.grass) (this.grass.material as THREE.ShaderMaterial).uniforms.uTime.value = t;
     for (const m of this.railMats) m.opacity = 0.18 + 0.2 * smoothstep(0.6, 3, d);
