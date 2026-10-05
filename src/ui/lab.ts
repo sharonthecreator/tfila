@@ -104,7 +104,7 @@ export function renderExplain(): void {
         ${others.length ? `<p><strong>חוזרת במסלול:</strong> ${others.map(({ i }) => `<button class="subj" style="color:var(--accent-2)" data-stop="${i}">תחנה ${i + 1}</button>`).join(' · ')}</p>` : ''}
         ${prev ? `<p>לפני: ${subjLink(nodeById(prev.n))}${next ? ` · אחרי: ${subjLink(nodeById(next.n))}` : ''}</p>` : next ? `<p>אחרי: ${subjLink(nodeById(next.n))}</p>` : ''}
       </div>
-      <div class="actions"><button class="btn primary" data-read>קריאת הטקסט המלא</button>${next ? `<button class="btn" data-stop="${state.stopIndex + 1}">התחנה הבאה ←</button>` : ''}<button class="btn" data-up>→ מבט על המסלול</button></div>`;
+      <div class="actions"><button class="btn primary" data-read>קריאת הטקסט המלא</button>${next ? `<button class="btn d-only" data-stop="${state.stopIndex + 1}">התחנה הבאה ←</button>` : ''}<button class="btn d-only" data-up>→ מבט על המסלול</button></div>`;
   } else if (route) {
     const { secs } = sections(route);
     const repeated = [...new Set(route.stops.filter((s) => s.occTotal > 1).map((s) => s.n))].map((id) => ({ n: nodeById(id), c: route.stops.filter((s) => s.n === id).length }));
@@ -118,7 +118,7 @@ export function renderExplain(): void {
         ${repeated.length ? `<p><strong>תפילות חוזרות:</strong> ${repeated.map((r) => `${subjLink(r.n)} <span class="num">×${r.c}</span>`).join(' · ')}</p>` : ''}
         <p><strong>חלקי המסלול:</strong> ${secs.map((s) => `<button class="subj" style="color:${s.color}" data-stop="${s.start}">${escapeHtml(s.name)}</button>`).join(' · ')}</p>
       </div>
-      <div class="actions"><button class="btn primary" data-journey>▶ מסע מודרך</button><button class="btn" data-stop="0">לתחנה הראשונה</button><button class="btn" data-exit>→ חזרה לסולם</button></div>
+      <div class="actions"><button class="btn primary" data-journey>▶ מסע מודרך</button><button class="btn" data-stop="0">לתחנה הראשונה</button><button class="btn d-only" data-exit>→ חזרה לסולם</button></div>
       <div class="hint">הקו המקווקו מראה את <b>סדר הזמן</b>, והאור הנע — את הכיוון. <span style="color:#c9f6ff">תכלת — עלייה בסולם</span> · <span style="color:#ffc46b">ענבר — ירידה</span>. קשרים: <span style="color:#ffd27a">מכיל</span> · <span style="color:#5dffa2">נוסף אל</span> · <span style="color:#c9a2ff">משתנה לפי מנהג</span> · <span style="color:#7fb2ff">קשור</span>.</div>`;
   } else if (state.nodeId) {
     const n = nodeById(state.nodeId);
@@ -139,7 +139,7 @@ export function renderExplain(): void {
         ${ins.map(({ r, m }) => `<p>${REL_IN_HE[r.type]}: ${subjLink(m)}${r.note ? ` <span style="color:var(--faint)">(${escapeHtml(r.note)})</span>` : ''}</p>`).join('')}
         ${routesWith(n.id)}
       </div>
-      <div class="actions"><button class="btn primary" data-read>קריאת הטקסט המלא</button><button class="btn" data-up>→ חזרה לסולם</button></div>`;
+      <div class="actions"><button class="btn primary" data-read>קריאת הטקסט המלא</button><button class="btn d-only" data-up>→ חזרה לסולם</button></div>`;
   } else {
     const featured = state.world.routes.filter((r) => r.featured);
     html = `
@@ -313,7 +313,7 @@ export function renderDock(): void {
         <input id="scrub" type="range" min="0" max="${n - 1}" step="1" value="${i}" aria-valuetext="תחנה ${i + 1}: ${escapeHtml(cur)}" />
         <div class="ticks">${secs.filter((_, k) => secs.length <= 7 || k % 2 === 0).map((x) => `<span style="right:${pct(x.start, n)}%">${escapeHtml(x.name.split(' ').slice(0, 2).join(' '))}</span>`).join('')}</div>
       </div>
-      <div class="quick">${secs.map((x) => `<button class="btn" data-stop="${x.start}" aria-pressed="${state.stopIndex >= x.start && state.stopIndex <= x.end}" style="color:${x.color}"><span class="sw"></span><span style="color:#d9e1ed">${escapeHtml(x.name)}</span></button>`).join('')}</div>
+      <div class="quick d-only">${secs.map((x) => `<button class="btn" data-stop="${x.start}" aria-pressed="${state.stopIndex >= x.start && state.stopIndex <= x.end}" style="color:${x.color}"><span class="sw"></span><span style="color:#d9e1ed">${escapeHtml(x.name)}</span></button>`).join('')}</div>
       <div class="m-transport m-only" role="group" aria-label="ניווט במסלול">
         <button class="btn" data-stop="${Math.max(0, state.stopIndex - 1)}" ${state.stopIndex <= 0 ? 'disabled' : ''} aria-label="התחנה הקודמת"><span aria-hidden="true">→</span> הקודמת</button>
         <button class="btn primary" data-act="journey" aria-pressed="${state.journey}" aria-label="${state.journey ? 'עצירת המסע המודרך' : 'מסע מודרך'}">${state.journey ? '❚❚' : '▶'}</button>
