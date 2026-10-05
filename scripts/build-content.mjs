@@ -8,7 +8,12 @@ import { REGIONS, NODES } from '../content/catalog.mjs';
 import { ROUTES } from '../content/routes.mjs';
 import { NUSACHIM, NUSACH_IDS } from '../content/nusachim.mjs';
 import { BOOKS } from '../content/books.mjs';
-import { WORLDS, PLACEMENT, ARI, SECTOR_ORDER, LADDER, LADDER_SOURCES } from '../content/ladder.mjs';
+import { WORLDS, PLACEMENT, ARI, ARI_NOTE, SECTOR_ORDER, LADDER, LADDER_SOURCES } from '../content/ladder.mjs';
+import { KADDISH_FORM, kaddishForm } from '../content/kaddish.mjs';
+// routes whose services are weekday services (the only ones Chabad's open edition covers)
+const HOLY_ROUTES = new Set(['shabbat', 'rosh-hashana', 'yom-kippur', 'sukkot', 'pesach-seder']);
+const nodeChabadBook = (id) => { const n = outNodes.find((x) => x.id === id); const tid = n?.texts.chabad?.id; return tid ? texts.get(tid).parts[0].book : null; };
+const WEEKDAY_ROUTES = new Set(['boker', 'shacharit', 'mincha', 'arvit', 'yom-chol', 'brit-mila', 'kabbalah-night', 'avelut']);
 import { resolveRef, plain } from './lib/sefaria.mjs';
 
 const OUT = new URL('../public/data/', import.meta.url).pathname;
@@ -98,7 +103,7 @@ for (const [s, regionId] of SECTOR_ORDER.entries()) {
       const row = rows === 1 ? 0 : (i % rows) - (rows - 1) / 2;
       const r = mid + row * dr;
       const y = LADDER.base + (w + a / 360) * LADDER.turnH;
-      layout.set(node.id, { world: worldId, wsrc: ARI.has(node.id) ? 'ari' : 'tfila', a: +a.toFixed(3), r: +r.toFixed(4), y: +y.toFixed(4) });
+      layout.set(node.id, { world: worldId, wsrc: ARI.has(node.id) ? 'ari' : 'tfila', ...(ARI_NOTE[node.id] ? { wnote: ARI_NOTE[node.id] } : {}), a: +a.toFixed(3), r: +r.toFixed(4), y: +y.toFixed(4) });
     });
   }
 }
@@ -161,8 +166,26 @@ for (const r of ROUTES) {
         const id = resolveTextId(ref, `${r.id}#${i}/${ns}`);
         if (id) t[ns] = { status: texts.get(id).excerpt ? 'excerpt' : 'full', ...textSummary(id) };
       }
-      if (t.em) t.kabbalah = { ...t.em, status: 'lens', base: 'em' };
     }
+    if (s.n === 'kaddish') {
+      // never fall back to another form of Kaddish: use the same form from the nusach's weekday siddur, labelled
+      const form = kaddishForm(s.note);
+      if (!form) errors.push(`route ${r.id}#${i}: Kaddish stop does not name its form`);
+      for (const ns of LIVE) {
+        if (t[ns]) continue;
+        if (ns === 'chabad' && !WEEKDAY_ROUTES.has(r.id)) { t[ns] = { status: 'unavailable' }; continue; }
+        const ref = form && KADDISH_FORM[form][ns];
+        const id = ref ? resolveTextId(ref, `${r.id}#${i}/${ns}/form`) : null;
+        t[ns] = id ? { status: 'excerpt', ...textSummary(id), label: 'נוסח הקדיש הזה כפי שהוא בסידור לימות החול' } : { status: 'unavailable' };
+      }
+    }
+    // Chabad's only open edition is the weekday siddur: on Shabbat / festival / High Holiday routes its weekday text
+    // must not stand in for the day's prayer
+    if (!WEEKDAY_ROUTES.has(r.id) && HOLY_ROUTES.has(r.id) && !t.chabad) {
+      const nt = nodeChabadBook(s.n);
+      if (nt === BOOKS.chabad.title) t.chabad = { status: 'unavailable' };
+    }
+    if (t.em) t.kabbalah = { ...t.em, status: t.em.status === 'unavailable' ? 'unavailable' : 'lens', base: 'em' };
     return {
       n: s.n, sec: s.sec || null, note: s.note || null, cond: s.cond || null,
       only: s.only || null, omit: !!s.omit, occ: counts[s.n], t: Object.keys(t).length ? t : null,
@@ -176,13 +199,25 @@ for (const r of ROUTES) {
 const ladderSources = Object.fromEntries(Object.entries(LADDER_SOURCES).map(([k, ref]) => [k, textSummary(resolveTextId(ref, `ladder/${k}`))]));
 for (const [hash, payload] of texts) writeFileSync(join(OUT, 't', hash + '.json'), JSON.stringify(payload));
 
+// Previews are decorative (the word pillar, the medallions, the LIVE ticker), so Divine Names are written there the
+// way printed matter for general use writes them — ה׳, אלקים, אד׳ — and in full only in the reader.
+const NAME_PREFIX = '[ובלכמשה]{0,3}';
+function softenName(w) {
+  const bare = w.replace(/[\u0591-\u05C7]/g, '').replace(/[^א-ת]/g, '');
+  let m;
+  if ((m = bare.match(new RegExp(`^(${NAME_PREFIX})(יהוה|יי|ה׳)$`)))) return `${m[1]}ה׳`;
+  if ((m = bare.match(new RegExp(`^(${NAME_PREFIX})(אלה)(ים|ינו|י|יך|יכם|יהם|יו|יה)$`)))) return `${m[1]}אלק${m[3]}`;
+  if ((m = bare.match(new RegExp(`^(${NAME_PREFIX})אדני$`)))) return `${m[1]}אד׳`;
+  if ((m = bare.match(new RegExp(`^(${NAME_PREFIX})אלוה$`)))) return `${m[1]}אלו־ה`;
+  return w;
+}
 function previewWords(hash, max = 90) {
   const t = texts.get(hash);
   const words = [];
   for (const p of t.parts) for (const s of p.segments) {
-    // drop rubrics (<small>…</small>) from the globe preview, keep the prayer words
+    // drop rubrics (<small>…</small>) from the preview, keep the prayer words
     const clean = s.replace(/<small>[\s\S]*?<\/small>/g, ' ').replace(/<[^>]+>/g, ' ');
-    for (const w of clean.split(/\s+/)) if (w && /[א-ת]/.test(w)) { words.push(w); if (words.length >= max) return words.join(' '); }
+    for (const w of clean.split(/\s+/)) if (w && /[א-ת]/.test(w)) { words.push(softenName(w)); if (words.length >= max) return words.join(' '); }
   }
   return words.join(' ');
 }

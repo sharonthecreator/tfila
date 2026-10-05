@@ -54,7 +54,7 @@ export const NODES = [
     t: {
       em: R('em', 'Preparatory Prayers/Morning Blessings'),
       ash: R('ash', 'Weekday/Shacharit/Preparatory Prayers/Morning Blessings'),
-      sef: R('sef', 'Weekday Shacharit/Morning Blessings'),
+      sef: [R('sef', 'Weekday Shacharit/Morning Blessings'), R('sef', 'Weekday Shacharit/Blessings on Torah', { from: 7 })],
       chabad: R('chabad', 'Shacharit/Morning Blessings'),
     },
     kav: R('shaarKavanot', 'Sermons on Morning Blessings', { from: 3, count: 4 }),
@@ -67,7 +67,7 @@ export const NODES = [
     t: {
       em: R('em', 'Preparatory Prayers/Torah Blessings'),
       ash: R('ash', 'Weekday/Shacharit/Preparatory Prayers/Torah Blessings'),
-      sef: R('sef', 'Weekday Shacharit/Blessings on Torah'),
+      sef: R('sef', 'Weekday Shacharit/Blessings on Torah', { to: 7 }),
     },
   },
   {
@@ -102,7 +102,7 @@ export const NODES = [
     w: 'לפני פסוקי דזמרה בשחרית.',
     v: 'בנוסח עדות המזרח מקפידים במיוחד על אמירת ״פיטום הקטורת״, ולפי המקובלים יש לאומרו מתוך הכתב.',
     t: {
-      em: R('em', 'Weekday Shacharit/Incense Offering'),
+      em: [R('em', 'Weekday Shacharit/Morning Prayer'), R('em', 'Weekday Shacharit/Incense Offering')],
       ash: R('ash', 'Weekday/Shacharit/Preparatory Prayers/Korbanot'),
       sef: R('sef', 'Weekday Shacharit/Korbanot'),
     },
@@ -134,7 +134,7 @@ export const NODES = [
     id: 'kaddish', region: 'shacharit', title: 'קדיש', k: 'core', imp: 3,
     d: 'תפילה בארמית על קידוש שם שמיים — ״יתגדל ויתקדש שמיה רבא״ — הנאמרת רק בעשרה. הקדיש הוא ה״חוליה״ שמחברת ומפרידה בין חלקי התפילה, ויש לו ארבע צורות: חצי קדיש (סוגר יחידה ופותח את הבאה — אחר פסוקי דזמרה, לפני עמידה, אחר קריאת התורה), קדיש תתקבל או ״שלם״ (חותם את יחידת העמידה), קדיש יתום (״יהא שלמא״, אחר מזמורים ו״עלינו״) וקדיש דרבנן (״על ישראל״, אחר לימוד תורה). בכל מסלול מוצגת הצורה הנאמרת באותה נקודה, מתוך המהדורה עצמה.',
     w: 'פעמים רבות בכל תפילה בציבור; קדיש יתום — על ידי אבלים.',
-    v: 'בעדות המזרח נוהגים שכל האבלים אומרים קדיש יחד; גם הנוסח (״ויצמח פורקניה ויקרב משיחיה״) מצוי בעדות המזרח, בנוסח ספרד ובחב״ד ולא באשכנז.',
+    v: 'בעדות המזרח נוהגים שכל האבלים אומרים קדיש יחד, וכיום כך גם ברוב קהילות אשכנז; הנוסח (״ויצמח פורקניה ויקרב משיחיה״) מצוי בעדות המזרח, בנוסח ספרד ובחב״ד ולא באשכנז.',
     t: {
       // the full Kaddish (״קדיש שלם / תתקבל״); every route stop carries the exact form said at that point
       em: R('em', 'Weekday Shacharit/Uva LeSion', { from: 3, count: 5 }),
@@ -168,7 +168,6 @@ export const NODES = [
     },
     rmb: R('rambamOrder', '1'),
     kav: R('shaarKavanot', 'Sermons on the Standing Prayer', { count: 4 }),
-    rel: [['contains', 'yaale-veyavo', 'בראש חודש ובחול המועד'], ['contains', 'al-hanisim', 'בחנוכה ובפורים'], ['contains', 'aneinu', 'בימי תענית']],
   },
   {
     id: 'tachanun', region: 'shacharit', title: 'וידוי ותחנון', k: 'conditional', imp: 2,
@@ -273,17 +272,18 @@ export const NODES = [
     d: 'הכהנים עולים לדוכן ומברכים את העם ב״יברכך… יאר… ישא…״ בחזרת הש״ץ, לפני ״שים שלום״.',
     w: 'בארץ ישראל ובקהילות הספרדים — בכל יום בשחרית ובמוסף; בקהילות אשכנז בחוץ לארץ — רק במוסף של ימים טובים.',
     t: {
-      em: R('ykEm', "Mussaf/Reader's Repetition", { start: 'וכשעומדים הכהנים', count: 2 }),
+      em: R('em', 'Weekday Shacharit/Amida', { from: 50, count: 14 }),
       ash: R('ash', 'Weekday/Shacharit/Amidah/Birkat Kohanim'),
       sef: R('sef', 'Priestly Blessing'),
     },
+    rel: [['adds', 'amidah', 'בחזרת הש״ץ, לפני ״שים שלום״']],
   },
 
   // ───────────────────────────── מנחה וערבית ─────────────────────────────
   {
     id: 'mincha-opening', region: 'erev', title: 'פתיחת מנחה', k: 'core', imp: 2,
     d: 'פתיחת תפילת המנחה: בעדות המזרח ובנוסח ספרד — פרשת התמיד ופיטום הקטורת ואחריהם ״אשרי״; באשכנז — ״אשרי״.',
-    w: 'אחר הצהריים, מחצות היום ועד השקיעה.',
+    w: 'אחר הצהריים — מחצי שעה אחר חצות היום (מנחה גדולה) ועד השקיעה.',
     t: {
       em: R('em', 'Weekday Mincha/Offerings'),
       ash: R('ash', 'Weekday/Minchah/Ashrei'),
@@ -442,7 +442,7 @@ export const NODES = [
   },
   {
     id: 'atkinu', region: 'shabbat', title: 'אתקינו סעודתא', k: 'custom', imp: 1,
-    d: 'פסוקי ההזמנה בארמית שחיבר האר״י לכל אחת משלוש סעודות השבת, ועמם הפיוטים ״אזמר בשבחין״, ״אסדר לסעודתא״ ו״בני היכלא״.',
+    d: 'פסוקי ההזמנה בארמית, בלשון הזוהר, לכל אחת משלוש סעודות השבת, ועמם שלושת הפיוטים שחיבר האר״י — ״אזמר בשבחין״, ״אסדר לסעודתא״ ו״בני היכלא״.',
     w: 'בפתיחת סעודות השבת.',
     tags: ['kabbalah'],
     t: {
@@ -521,7 +521,7 @@ export const NODES = [
   },
   {
     id: 'musaf-shabbat', region: 'shabbat', title: 'מוסף של שבת', k: 'core', imp: 2,
-    d: 'תפילה כנגד קרבן המוסף של שבת, עם ״תכנת שבת״ (בעדות המזרח ובנוסח ספרד) או ״ישמחו במלכותך״.',
+    d: 'תפילה כנגד קרבן המוסף של שבת, עם ״תכנת שבת״ ו״ישמחו במלכותך״ (ובשבת ראש חודש — ״אתה יצרת״).',
     w: 'בשבת אחרי קריאת התורה.',
     t: {
       em: R('em', 'Shabbat Mussaf/Amida'),
@@ -732,7 +732,7 @@ export const NODES = [
   {
     id: 'pidyon-haben', region: 'chaim', title: 'פדיון הבן', k: 'conditional', imp: 1,
     d: 'פדיון בכור מכהן בחמישה סלעים.',
-    w: 'ביום השלושים ואחד ללידת בן בכור לאמו (אם אינו כהן או לוי).',
+    w: 'ביום השלושים ואחד ללידת בן בכור לאמו — כשנולד בלידה טבעית, האב אינו כהן או לוי והאם אינה בת כהן או לוי.',
     t: {
       em: R('em', 'Assorted Blessings and Prayers/Redeeming the First Born'),
       sef: R('sef', 'Various Blessings/Redeeming Firstborn'),
@@ -749,19 +749,19 @@ export const NODES = [
   // ───────────────────────────── מועדים ─────────────────────────────
   {
     id: 'yaale-veyavo', region: 'moadim', title: 'יעלה ויבוא', k: 'conditional', imp: 2,
-    d: 'תוספת לעמידה (בברכת ״רצה״) ולברכת המזון, המזכירה את היום — ראש חודש או מועד.',
+    d: 'תוספת לעמידה ולברכת המזון, המזכירה את היום — ראש חודש או מועד. בעמידה: בחול המועד ובראש חודש — בברכת ״רצה״; ביום טוב — בברכה האמצעית.',
     w: 'בראש חודש, בחול המועד ובימים טובים.',
     t: {
-      em: R('em', 'Weekday Shacharit/Amida', { start: 'יעלה ויבא', count: 1 }),
+      em: R('em', 'Weekday Shacharit/Amida', { start: 'יעלה ויבא', count: 5 }),
       ash: R('ash', 'Weekday/Shacharit/Amidah/Temple Service'),
-      sef: R('sef', 'Weekday Shacharit/Amidah', { start: 'יעלה ויבא', count: 1 }),
+      sef: R('sef', 'Weekday Shacharit/Amidah', { start: 'יעלה ויבא', count: 5 }),
     },
-    rel: [['adds', 'amidah', 'בברכת רצה'], ['adds', 'birkat-hamazon', 'בברכת בונה ירושלים']],
+    rel: [['adds', 'amidah', 'בברכת רצה'], ['adds', 'amidah-regalim', 'בברכה האמצעית'], ['adds', 'birkat-hamazon', 'בברכת בונה ירושלים']],
   },
   {
     id: 'hallel', region: 'moadim', title: 'הלל', k: 'conditional', imp: 3,
     d: 'מזמורי תהלים קיג–קיח, שירת הודיה על הגאולה. ״הלל שלם״ או ״חצי הלל״ (בדילוג) — לפי היום.',
-    w: 'הלל שלם: בימים טובים, בכל ימי חנוכה ובליל הסדר. חצי הלל: בראש חודש ובימי פסח האחרונים.',
+    w: 'הלל שלם: בכל ימי סוכות ושמיני עצרת, ביום הראשון של פסח (בחו״ל — בשני הראשונים), בשבועות, בכל ימי חנוכה ובליל הסדר. חצי הלל: בראש חודש, בחול המועד פסח ובשביעי של פסח.',
     v: 'בחצי הלל של ראש חודש: הספרדים אינם מברכים, האשכנזים מברכים.',
     t: {
       em: R('em', 'Rosh Hodesh/Hallel'),
@@ -770,6 +770,7 @@ export const NODES = [
       chabad: R('chabad', 'Hallel'),
     },
     gen: R('hallel', ''),
+    rel: [['related', 'hallel-seder', 'בליל הסדר נאמר ההלל על הכוס, בשני חלקים']],
   },
   {
     id: 'musaf-rosh-chodesh', region: 'moadim', title: 'מוסף לראש חודש', k: 'conditional', imp: 1,
@@ -886,8 +887,8 @@ export const NODES = [
     w: 'בכל ימי חנוכה ובפורים.',
     t: {
       ash: [R('ash', 'Shabbat/Minchah/Amidah/Thanksgiving/Al Hanisim for Chanukkah'), R('ash', 'Shabbat/Minchah/Amidah/Thanksgiving/Al Hanisim for Purim')],
-      em: R('em', 'Weekday Shacharit/Amida', { start: 'על הנסים', count: 3 }),
-      sef: R('sef', 'Weekday Shacharit/Amidah', { start: 'על הנסים', count: 3 }),
+      em: R('em', 'Weekday Shacharit/Amida', { start: 'על הנסים', count: 4 }),
+      sef: R('sef', 'Weekday Shacharit/Amidah', { start: 'ועל הנסים', count: 6 }),
     },
     rel: [['adds', 'amidah', 'בברכת מודים'], ['adds', 'birkat-hamazon', 'בברכת הארץ']],
   },
@@ -965,6 +966,7 @@ export const NODES = [
     },
     gen: R('hag', en),
     ...(id === 'maggid' ? { rel: [['contains', 'ma-nishtana']], kav: R('shaarKavanot', 'Sermons on Passover', { count: 5 }) } : {}),
+    ...(id === 'barech' ? { rel: [['related', 'birkat-hamazon', 'ברכת המזון של הסדר, על הכוס השלישית']] } : {}),
   })),
   {
     id: 'ma-nishtana', region: 'pesach', title: 'מה נשתנה', k: 'core', imp: 2,
@@ -987,6 +989,7 @@ export const NODES = [
     d: 'פיוטי בקשה ותחנונים ו״שלוש עשרה מידות של רחמים״ באשמורת הבוקר.',
     w: 'בעדות המזרח — מראש חודש אלול ועד יום הכיפורים; באשכנז — מהשבוע שלפני ראש השנה.',
     t: { em: R('selichotEm', '') },
+    rel: [['related', 'selichot-yk', 'הסליחות מגיעות לשיאן ביום הכיפורים']],
   },
   {
     id: 'hatarat-nedarim', region: 'rh', title: 'התרת נדרים', k: 'custom', imp: 1,
@@ -1012,7 +1015,7 @@ export const NODES = [
   },
   {
     id: 'simanim', region: 'rh', title: 'סדר הסימנים', k: 'custom', imp: 2,
-    d: 'אכילת מאכלים שיש בשמם סימן לשנה טובה — תפוח בדבש, רימון, תמרים, רוביא, כרתי, סלק, דלעת ראש — כל אחד עם ״יהי רצון״ (על פי ״סימנא מילתא״, הוריות יב ע״א).',
+    d: 'אכילת מאכלים שיש בשמם סימן לשנה טובה — תפוח בדבש, רימון, תמרים, רוביא, כרתי, סלק, דלעת, ראש (כבש או דג) — כל אחד עם ״יהי רצון״ (על פי ״סימנא מילתא״, הוריות יב ע״א).',
     w: 'בסעודת ליל ראש השנה.',
     v: 'בעדות המזרח הסדר מפורט ומורחב, ונאמר בו ״יהי רצון״ על כל סימן; באשכנז — בעיקר תפוח בדבש.',
     t: {
@@ -1036,8 +1039,8 @@ export const NODES = [
     w: 'בבוקר ראש השנה.',
     t: {
       em: R('rhEm', 'Shacharit/Amidah'),
-      ash: R('rhAsh', 'The Morning Prayers/First Day of Rosh Hashana', { count: 60 }),
-      sef: R('rhSef', 'The Morning Prayers/First Day of Rosh Hashana', { count: 60 }),
+      ash: R('rhAsh', 'The Morning Prayers/First Day of Rosh Hashana', { from: 61, count: 34 }),
+      sef: R('rhSef', 'The Morning Prayers/First Day of Rosh Hashana', { from: 57, count: 34 }),
     },
   },
   {
@@ -1051,6 +1054,7 @@ export const NODES = [
       sef: R('rhSef', 'Sounding of the Shofar/Blessings and Sounding of the Shofar'),
     },
     kav: R('shaarKavanot', 'Sermons on Rosh Hashanah', { count: 5 }),
+    rel: [['related', 'musaf-rh', 'התקיעות דמעומד — בתוך מלכויות, זכרונות ושופרות']],
   },
   {
     id: 'unetaneh-tokef', region: 'rh', title: 'ונתנה תוקף', k: 'custom', imp: 2,
@@ -1150,7 +1154,7 @@ export const NODES = [
   },
   {
     id: 'kol-nidrei', region: 'yk', title: 'כל נדרי', k: 'core', imp: 3,
-    d: 'התרת נדרים בארמית, בפני ספרי תורה פתוחים ובעטיפת טלית, שלוש פעמים — ההתחלה הדרמטית של היום הקדוש.',
+    d: 'התרת נדרים בארמית, בארון קודש פתוח כשספרי התורה בידי מכובדי הקהל, בעטיפת טלית, שלוש פעמים — פתיחת היום הקדוש.',
     w: 'בליל יום הכיפורים, לפני השקיעה.',
     v: 'נוסחו משתנה בין העדות — האם ההתרה חלה על השנה שעברה או על השנה הבאה (בעקבות רבנו תם).',
     t: {
@@ -1243,7 +1247,7 @@ export const NODES = [
     },
   },
   {
-    id: 'yizkor', region: 'taaniot', title: 'יזכור והשכבה', k: 'custom', imp: 2,
+    id: 'yizkor', region: 'taaniot', title: 'יזכור ואל מלא רחמים', k: 'custom', imp: 2,
     d: 'הזכרת נשמות קרובים שנפטרו, בהתחייבות לצדקה לעילוי נשמתם. בסיום — ״אל מלא רחמים״ ו״אב הרחמים״.',
     w: 'באשכנז ובנוסח ספרד — ביום הכיפורים ובימים האחרונים של הרגלים.',
     v: 'בעדות המזרח אין סדר ״יזכור״ בנוסח זה; נוהגים לומר ״השכבה״ ולהתנדב לעילוי נשמה, וכן ביום השנה.',
@@ -1333,10 +1337,10 @@ export const NODES = [
   {
     id: 'aneinu', region: 'taaniot', title: 'עננו', k: 'conditional', imp: 1,
     d: 'תוספת לעמידה בימי תענית: ״עננו ה׳ עננו ביום צום תעניתנו״.',
-    w: 'בתענית ציבור — היחיד בברכת ״שומע תפילה״, ושליח הציבור כברכה בפני עצמה.',
+    w: 'בתענית ציבור — היחיד בברכת ״שומע תפילה״ (בעדות המזרח — בשחרית ובמנחה; באשכנז — במנחה בלבד), ושליח הציבור בחזרה כברכה בפני עצמה.',
     t: {
       em: R('em', 'Weekday Mincha/Amida', { start: 'עננו', count: 1 }),
-      sef: R('sef', 'Weekday Mincha/Amidah', { start: 'עננו', count: 1 }),
+      sef: R('sef', 'Weekday Mincha/Amidah', { start: '^עננו', count: 1 }),
       ash: R('ash', 'Weekday/Minchah/Amida/Response to Prayer'),
     },
     rel: [['adds', 'amidah', 'בברכת שומע תפילה']],
@@ -1379,8 +1383,12 @@ export const NODES = [
     id: 'nachem', region: 'taaniot', title: 'נחם', k: 'conditional', imp: 1,
     d: 'תוספת לברכת ״בונה ירושלים״: ״נחם ה׳ אלוהינו את אבלי ציון ואת אבלי ירושלים״.',
     w: 'בט׳ באב — באשכנז במנחה בלבד; לפי השולחן ערוך בכל תפילות היום.',
-    t: { ash: R('ash', 'Weekday/Minchah/Amida/Rebuilding Jerusalem') },
-    rel: [['adds', 'amidah', 'בברכת בונה ירושלים']],
+    t: {
+      ash: R('ash', 'Weekday/Minchah/Amida/Rebuilding Jerusalem'),
+      em: R('em', 'Weekday Mincha/Amida', { start: 'נחם', count: 2 }),
+      sef: R('sef', 'Weekday Mincha/Amidah', { start: '^נחם', count: 1 }),
+    },
+    rel: [['adds', 'amidah', 'בברכת בונה ירושלים'], ['related', 'birkat-avelim', 'גם בברכת המזון של אבלים מזכירים את ״אבלי ציון״']],
   },
   {
     id: 'kriah', region: 'taaniot', title: 'קריעה ודיין האמת', k: 'core', imp: 2,
@@ -1466,7 +1474,7 @@ export const NODES = [
     tags: ['kabbalah'],
     t: {
       em: R('em', 'Weekday Shacharit/Incense Offering', { start: '^אנא בכח', count: 8 }),
-      sef: R('sef', 'Kabbalat Shabbat', { start: '^אנא בכח', count: 1 }),
+      sef: R('sef', 'Kabbalat Shabbat', { start: '^אנא בכח', count: 8 }),
       ash: R('ash', 'Shabbat/Kabbalat Shabbat/Ana Bekoach'),
     },
   },

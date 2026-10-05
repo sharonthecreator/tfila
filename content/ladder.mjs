@@ -16,7 +16,7 @@ export const WORLDS = [
   {
     id: 'asiyah', he: 'עשיה', en: 'Asiyah', color: '#ffb547',
     ari: 'מתחילת התפילה עד ״ברוך שאמר״ — ברכות השחר וסדר הקרבנות.',
-    rule: 'מעשים והכנות: נטילה, טלית ותפילין, נרות, ברכות הנהנין, מצוות שבמעשה, וגם ה״ירידה״ — וידוי, תחנון, סליחות ואבלות.',
+    rule: 'מעשים והכנות: נטילה, טלית ותפילין, נרות, ברכות הנהנין, מצוות שבמעשה, וגם ה״ירידה״ — וידוי, תחנון וסליחות.',
   },
   {
     id: 'yetzirah', he: 'יצירה', en: 'Yetzirah', color: '#5dffa2',
@@ -48,6 +48,11 @@ export const SECTOR_ORDER = ['seuda', 'chaim', 'boker', 'shacharit', 'erev', 'sh
 const A = 'asiyah', Y = 'yetzirah', B = 'beriah', Z = 'atzilut';
 
 // Nodes placed by the Ari's division of Shacharit (the rest are structural).
+// Where the Ari's reason is not the four-world division itself
+export const ARI_NOTE = {
+  tachanun: 'בנפילת אפיים ״בעמידה הוא עומד באצילות ומפיל עצמו עד העשיה״ (שער הכוונות, דרושי נפילת אפים, בשם קונטריס אדם א׳).',
+};
+
 export const ARI = new Set(['birchot-hashachar', 'birchot-hatorah', 'akeda-korbanot', 'adon-olam', 'pesukei-dezimra', 'shema', 'amidah', 'tachanun']);
 
 export const PLACEMENT = {
@@ -87,8 +92,8 @@ export const PLACEMENT = {
   'chazara-yk': Z, 'kriat-hatorah-yk': B, hineni: A, avoda: Z, 'eleh-ezkera': Y, 'mincha-yk': B, 'el-nora-alila': Y,
   neila: Z, 'neila-closing': B, 'motzaei-yk': A,
   // taaniot & mourning
-  yizkor: A, aneinu: Z, 'selichot-taanit': A, 'arvit-tisha': A, eicha: B, kinot: Y, nachem: Z, kriah: A, 'tziduk-hadin': B,
-  'kaddish-yatom': B, 'birkat-avelim': B, hashkava: A, 'mishnayot-avel': B,
+  yizkor: B, aneinu: Z, 'selichot-taanit': A, 'arvit-tisha': A, eicha: B, kinot: Y, nachem: Z, kriah: A, 'tziduk-hadin': B,
+  'kaddish-yatom': B, 'birkat-avelim': B, hashkava: B, 'mishnayot-avel': B,
 };
 
 // Geometry of the ladder (world units): one full turn of the helix per world.

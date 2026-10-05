@@ -21,6 +21,8 @@ export interface TextRecord extends Partial<TextSummary> {
   kav?: TextSummary;
   extra?: TextSummary & { label: string };
   fromStop?: boolean;
+  /** shown above the text when it is a stand-in of the same form (e.g. a Kaddish from the weekday siddur) */
+  label?: string;
 }
 
 export interface Relation {
@@ -43,6 +45,8 @@ export interface PrayerNode {
   world: WorldId;
   /** 'ari' = placed by the Ari's division of Shacharit; 'tfila' = this project's structural placement */
   wsrc: 'ari' | 'tfila';
+  /** the Ari's own reason, when it is not the four-world division of Shacharit */
+  wnote?: string;
   /** cylindrical position on the ladder: angle (deg, 0 = +Z), radius, height */
   a: number;
   r: number;

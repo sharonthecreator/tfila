@@ -72,6 +72,9 @@ for (const r of world.routes) r.stops.forEach((s, i) => {
   if (!s.note) { errors.push(`route ${r.id}#${i}: Kaddish stop without its form`); return; }
   const form = FORMS.find(([re]) => re.test(s.note.split('—')[0]));
   if (!form) { errors.push(`route ${r.id}#${i}: Kaddish form not named in note`); return; }
+  for (const ns of ['em', 'ash', 'sef', 'chabad']) if (!s.t?.[ns]) errors.push(`route ${r.id}#${i}/${ns}: Kaddish stop would fall back to another form`);
+  const weekday = ['boker', 'shacharit', 'mincha', 'arvit', 'yom-chol', 'brit-mila', 'kabbalah-night', 'avelut'].includes(r.id);
+  if (!weekday && s.t?.chabad?.id) errors.push(`route ${r.id}#${i}/chabad: weekday Chabad text on a Shabbat/festival route`);
   for (const [ns, rec] of Object.entries(s.t || {})) {
     if (!rec.id) continue;
     const t = plainText(rec.id);

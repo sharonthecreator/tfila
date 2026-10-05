@@ -87,7 +87,7 @@ async function textArea(node: PrayerNode, rec: TextRecord, nusach: NusachId, sto
   }
   const p = await loadText(rec.id!);
   let banner = '';
-  if (rec.status === 'lens') banner = `<div class="notice">עדשת הקבלה: טקסט התפילה הוא של <b>עדות המזרח</b>, שנוסחו נקבע על פי כוונות האר״י כפי שנמסרו על ידי הרש״ש.${rec.kav ? ' מתחת לטקסט — קטע מ״שער הכוונות״.' : ''}</div>`;
+  if (rec.status === 'lens') banner = `<div class="notice">עדשת הקבלה: טקסט התפילה הוא של <b>עדות המזרח</b> — הנוסח שבו התפללו המקובלים, ושעליו הוסיף הרש״ש את כוונותיו.${rec.kav ? ' מתחת לטקסט — קטע מ״שער הכוונות״.' : ''}</div>`;
   if (rec.status === 'historical') banner = `<div class="notice"><b>מקור היסטורי, לא סידור בלדי.</b> מוצג ״סדר תפילות כל השנה״ של הרמב״ם, שעליו מבוסס נוסח בלדי. התכלאל עצמו אינו זמין במקורות הפתוחים.</div>`;
   const label = rec.status === 'historical' ? 'היסטורי' : rec.status === 'lens' ? 'בסיס ע״מ' : 'מלא';
   const kav = rec.status === 'lens' && rec.kav ? await kavSection(rec.kav.id) : '';
@@ -96,7 +96,9 @@ async function textArea(node: PrayerNode, rec: TextRecord, nusach: NusachId, sto
     const ep = await loadText(rec.extra.id);
     extra = `<div class="sec-title">${escapeHtml(rec.extra.label)}</div>${sourceCards(ep, 'גרסה נוספת')}<div class="prayer">${segments(ep)}</div>`;
   }
-  const occ = rec.fromStop ? '<div class="notice">הטקסט של <b>מופע זה</b> במסלול (לא בהכרח של שאר המופעים).</div>' : '';
+  const occ = rec.label
+    ? `<div class="notice">${escapeHtml(rec.label)} — אין במהדורה הפתוחה טקסט למקום הזה עצמו.</div>`
+    : rec.fromStop ? '<div class="notice">הטקסט של <b>מופע זה</b> במסלול (לא בהכרח של שאר המופעים).</div>' : '';
   return `${banner}${occ}${sourceCards(p, label)}<div class="prayer" id="prayerBody">${segments(p)}</div>${kav}${extra}${HOLY_NOTE}`;
 }
 

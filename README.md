@@ -122,6 +122,22 @@ Status labels in the app: **טקסט מלא** (a complete section of the edition
 
 Licenses as recorded by Sefaria: CC0, Public Domain, CC-BY, CC-BY-SA. Several editions (Wikisource-derived Edot HaMizrach Yom Kippur machzor and Chabad siddur, the Sefard machzorim, the per-nusach Birkat Hamazon versions) carry **no license in Sefaria's metadata**; the app shows "רישיון לא צוין בספריא" next to them rather than guessing.
 
+**Content audit.** All routes, Kaddish placements, relations, text references and the respect points were audited
+against the cached editions. The findings were fixed and are now enforced by `npm test` where they can be:
+- No Kaddish stop ever falls back to another form of Kaddish. Where an edition lacks the text at that exact spot, the
+  same form from that nusach's weekday siddur is shown, labelled as such.
+- Chabad's weekday text is never shown on Shabbat, festival or High Holiday routes.
+- Ne'ilah's Vidui has no Al Chet in any nusach.
+- Musaf's Vidui comes before the Avodah.
+- Avinu Malkenu is marked per custom.
+- The father's blessing at a brit is now included.
+- Truncated excerpts were fixed: Ya'aleh VeYavo, Al HaNissim, Aneinu, Ana BeKoach, Birchot HaShachar and the Rosh
+  Hashanah Amidah.
+- Nachem was added for Edot HaMizrach and Sefard, along with a number of factual corrections.
+
+Divine Names appear in full only in the reader. In decorative places (the pillar, the medallions, the LIVE ticker)
+they are written as ה׳ / אלקים / אד׳.
+
 Other known limitations: no Sephardi Hoshanot, Ashkenazi wedding/brit liturgy, Tikkun Leil Shavuot or ketubah texts; long sections are shown as they appear in the edition (some include the edition's own headings and instructions); customs differ between and within communities far more than any overview can show.
 
 ## Project layout

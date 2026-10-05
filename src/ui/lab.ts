@@ -38,7 +38,7 @@ function worldChip(n: PrayerNode): string {
 function worldLine(n: PrayerNode): string {
   const w = worldById(n.world);
   return n.wsrc === 'ari'
-    ? `<p><strong>בסולם:</strong> עולם ה<b style="color:${w.color}">${w.he}</b> — לפי חלוקת האר״י לתפילת השחר (שער הכוונות): ${escapeHtml(w.ari)}</p>`
+    ? `<p><strong>בסולם:</strong> עולם ה<b style="color:${w.color}">${w.he}</b> — ${n.wnote ? `לפי האר״י: ${escapeHtml(n.wnote)}` : `לפי חלוקת האר״י לתפילת השחר (שער הכוונות): ${escapeHtml(w.ari)}`}</p>`
     : `<p><strong>בסולם:</strong> עולם ה<b style="color:${w.color}">${w.he}</b> <span style="color:var(--faint)">— שיבוץ מבני של tfila (${escapeHtml(w.rule.split(':')[0])}), לא קביעה קבלית.</span></p>`;
 }
 

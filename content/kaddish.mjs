@@ -43,16 +43,16 @@ export const KADDISH = {
   arvitAleinu: { ash: ASH.yatom, sef: R('sef', 'Weekday Maariv', { ...MZ, from: 138, count: 6 }), chabad: R('chabad', 'Maariv', { from: 69, count: 4 }) },
   // ── Shabbat ──
   kabbalatShabbatEm: { em: R('em', 'Kabbalat Shabbat', { from: 30, count: 5 }) },
-  kabbalatShabbatAsh: { ash: ASH.yatom },
-  shabbatShacharit: { em: R('em', 'Shabbat Shacharit/Amidah', { from: 80, count: 5 }), ash: ASH.titkabal },
+  kabbalatShabbatAsh: { ash: ASH.yatom, sef: R('sef', 'Kabbalat Shabbat', { from: 40, count: 3 }) },
+  shabbatShacharit: { em: R('em', 'Shabbat Shacharit/Amidah', { from: 80, count: 5 }), ash: ASH.titkabal, sef: R('sef', 'Shabbat Morning Services/Amidah', { from: 55, count: 5 }) },
   shabbatMusafHalf: { em: R('em', 'Shabbat Mussaf/Amida', { from: 2, count: 2 }), ash: ASH.half },
-  shabbatMusafTitkabal: { em: R('em', 'Shabbat Mussaf/Amida', { from: 55, count: 5 }), ash: ASH.titkabal },
+  shabbatMusafTitkabal: { em: R('em', 'Shabbat Mussaf/Amida', { from: 55, count: 5 }), ash: ASH.titkabal, sef: R('sef', 'Musaf', { from: 59, count: 5 }) },
   pirkeiAvot: { ash: ASH.derabbanan },
   // ── Rosh Chodesh ──
-  rcHallel: { em: R('em', 'Rosh Hodesh/Hallel', { from: 25, count: 5 }), ash: ASH.titkabal },
+  rcHallel: { em: R('em', 'Rosh Hodesh/Hallel', { from: 25, count: 5 }), ash: ASH.titkabal, sef: R('sef', 'Rosh Chodesh/Hallel', { from: 29, count: 6 }) },
   rcTorah: { em: R('em', 'Rosh Hodesh/Hallel', { from: 40, count: 2 }), ash: ASH.half },
-  rcMusaf: { em: R('em', 'Rosh Hodesh/Mussaf', { from: 43, count: 5 }), ash: ASH.titkabal },
-  rcBarchiNafshi: { em: R('em', 'Rosh Hodesh/Barchi Nafshi', { from: 3, count: 3 }), ash: ASH.yatom },
+  rcMusaf: { em: R('em', 'Rosh Hodesh/Mussaf', { from: 43, count: 5 }), ash: ASH.titkabal, sef: R('sef', 'Rosh Chodesh/Mussaf', { from: 39, count: 5 }) },
+  rcBarchiNafshi: { em: R('em', 'Rosh Hodesh/Barchi Nafshi', { from: 3, count: 3 }), ash: ASH.yatom, sef: R('sef', 'Rosh Chodesh/Barchi Nafshi', { from: 3, count: 3 }) },
   // ── Rosh Hashanah ──
   rhShacharit: { em: R('rhEm', 'Shacharit/Avinu Malkenu', { from: 30, count: 7 }), ash: ASH.titkabal },
   rhMaftir: { em: R('rhEm', 'Maftir', { from: 2, count: 2 }), ash: ASH.half },
@@ -70,6 +70,25 @@ export const KADDISH = {
   ykNeilahHalf: { em: R('ykEm', 'Neilah/Ashrei', { from: 3, count: 1 }), sef: R('ykSef', 'Neilah Service/Ashrei', { from: 72, count: 2 }), ash: ASH.half },
   ykNeilahTitkabal: { em: R('ykEm', 'Neilah/Slichot', { from: 21, count: 3 }), sef: R('ykSef', 'Neilah Service/Avinu Malkenu', { from: 91, count: 6 }), ash: ASH.titkabal },
 };
+
+// When a nusach has no Kaddish at that exact place in its open edition, the stop shows the same FORM of Kaddish as it
+// appears in that nusach's weekday siddur — labelled so — never another form. Chabad, whose only open edition is the
+// weekday siddur, stays "unavailable" on Shabbat, festival and High Holiday routes.
+export const KADDISH_FORM = {
+  half: KADDISH.pesukei,
+  titkabal: KADDISH.uvaLetzion,
+  yatom: KADDISH.shirShelYom,
+  derabbanan: KADDISH.korbanot,
+};
+/** The form a Kaddish stop's note names (its first clause). */
+export function kaddishForm(note) {
+  const head = (note || '').split('—')[0];
+  if (/חצי קדיש/.test(head)) return 'half';
+  if (/תתקבל/.test(head)) return 'titkabal';
+  if (/קדיש יתום/.test(head)) return 'yatom';
+  if (/דרבנן|על ישראל/.test(head)) return 'derabbanan';
+  return null;
+}
 
 // Stops, ready to drop into a route.
 const K = (key, note, extra = {}) => ({ n: 'kaddish', note, t: KADDISH[key], ...extra });
