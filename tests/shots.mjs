@@ -137,6 +137,10 @@ if (['all', 'back'].includes(only)) {
 if (['all', 'journey'].includes(only)) {
   const p = await open({ width: 1440, height: 900 }, '#n=em&route=yom-kippur');
   await wait(p, 2500);
+  check(await p.locator('#dock .pace [data-speed]').count() === 4, 'the dock offers four journey paces');
+  await p.click('#dock [data-speed="2"]');
+  check(await p.locator('#dock [data-speed="2"][aria-checked="true"]').count() === 1, 'pace switches to fast');
+  check(await p.evaluate(() => JSON.parse(localStorage.getItem('tfila.prefs') || '{}').speed) === 2, 'the chosen pace is remembered');
   await p.click('#dock [data-act="journey"]');
   await wait(p, 18000); // software-rendered test browsers run at a couple of frames per second
   const cur = await p.locator('#readouts .ro.big.accent .val').textContent();

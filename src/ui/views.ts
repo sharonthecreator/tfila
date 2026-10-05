@@ -235,7 +235,7 @@ export function renderHelp(): void {
     <p><b>חזרה:</b> הכפתור ״→ חזרה״ שבראש המסך, מקש <kbd>Esc</kbd> או כפתור ״אחורה״ של הדפדפן והטלפון — כל אחד מהם מחזיר שלב אחד: מתחנה למסלול, ממסלול לסולם כולו.</p>
     <dl><dt><kbd>←</kbd> <kbd>→</kbd></dt><dd>הקפת הסולם (כשהוא בפוקוס)</dd><dt><kbd>↑</kbd> <kbd>↓</kbd> <kbd>PgUp</kbd> <kbd>PgDn</kbd></dt><dd>טיפוס וירידה</dd><dt><kbd>Home</kbd></dt><dd>מבט על הסולם כולו</dd>
       <dt><kbd>+</kbd> <kbd>−</kbd></dt><dd>התקרבות והתרחקות</dd><dt><kbd>Enter</kbd></dt><dd>בחירת התפילה שבמרכז</dd>
-      <dt><kbd>N</kbd> <kbd>P</kbd></dt><dd>התחנה הבאה / הקודמת במסלול</dd><dt><kbd>/</kbd></dt><dd>חיפוש</dd><dt><kbd>Esc</kbd></dt><dd>סגירה / חזרה שלב אחד</dd></dl>
+      <dt><kbd>N</kbd> <kbd>P</kbd></dt><dd>התחנה הבאה / הקודמת במסלול — לאורך נתיב הסולם</dd><dt><kbd>[</kbd> <kbd>]</kbd></dt><dd>קצב המסע המודרך: לאט יותר / מהר יותר</dd><dt><kbd>/</kbd></dt><dd>חיפוש</dd><dt><kbd>Esc</kbd></dt><dd>סגירה / חזרה שלב אחד</dd></dl>
     <p>הספרייה היא תצוגת טקסט מלאה ונגישה של כל התוכן והמסלולים. כפתור העיגול מפחית תנועה; בחירת האיכות משפיעה על הצללים, הבלום והחדות.</p>`;
   $('helpPanel').querySelector<HTMLElement>('[data-close]')!.onclick = () => emit('help', false);
 }

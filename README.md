@@ -64,6 +64,11 @@ surrounded by glass instrument panels with letter-spaced micro-labels, monospace
 * **Routes climb.** A route is a dashed path wrapping around the outside of the ladder: cyan where it ascends, amber where
   it descends. The Yom Kippur route visibly climbs to Atzilut for each of its five Amidot and descends to Vidui after
   each one. The readouts panel charts the climb (↑ ascents, ↓ descents, how many times the route reaches Atzilut).
+* **Along the lane.** A route never jumps through the air: between two stops it steps off the rung onto the ladder's
+  lane and follows the spiral — up the outer lane when it ascends, down the inner lane when it descends — onto the next
+  rung. Moving to the next or previous stop, the camera rides that same lane past the prayers in between.
+* **Pace.** The guided journey has four paces (איטי · רגיל · מהיר · מהיר מאוד, or `[` / `]`). The pace sets both the
+  travel along the lane and how long the journey rests at each stop, and it is remembered.
 * **Semantic zoom.** Far: the four worlds and the regions; closer: every title (collision-avoided); closest: each prayer
   opens into a dial-like medallion with its first words, leaning toward you from its rung. Close up the rails and rungs
   step back to ghosts and the nearest metal is cut away, so the words carry the view.

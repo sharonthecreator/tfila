@@ -108,6 +108,11 @@ export class PrayerWorld {
   private comet: THREE.Sprite | null = null;
   private routePts: THREE.Vector3[] = [];
   private routeCum: number[] = [];
+  /** the route between stop i and i+1, along the ladder's lane */
+  private segPts: THREE.Vector3[][] = [];
+  private travel: { pts: THREE.Vector3[]; cum: number[]; ang: number[]; from: View; t0: number; dur: number; dMid: number; resolve: () => void } | null = null;
+  /** pace of travel along the ladder (1 = normal) */
+  speed = 1;
   private beam!: THREE.Group;
   private beamMat!: THREE.ShaderMaterial;
 
@@ -592,19 +597,54 @@ export class PrayerWorld {
     return p.addScaledVector(tangent, Math.cos(ang) * 0.02).add(new THREE.Vector3(0, Math.sin(ang) * 0.02, 0)).addScaledVector(radialAt(n.a), 0.01);
   }
 
+  /** unwrapped helix angle (deg) of a route stop's node */
+  private stopU(i: number): number { return this.unwrapped(this.nodes[this.nodeIndex.get(this.route!.stops[i].n)!]); }
+
+  /**
+   * The way from one stop to the next along the ladder itself: off the rung onto the lane, along the spiral (up or
+   * down, as the ladder goes), and onto the next rung. Ascents keep to the outer lane, descents to the inner one —
+   * "עולים ויורדים בו".
+   */
+  private lanePath(a: THREE.Vector3, ua: number, b: THREE.Vector3, ub: number, k: number): THREE.Vector3[] {
+    const { rIn, rOut } = this.L;
+    const du = ub - ua;
+    if (Math.abs(du) < 0.5) return [a.clone(), b.clone()];
+    const lane = du > 0 ? rOut - 0.11 : rIn + 0.11;
+    const laneR = lane + ((k % 3) - 1) * 0.022;
+    const ra = Math.hypot(a.x, a.z), rb = Math.hypot(b.x, b.z);
+    const n = Math.max(6, Math.ceil(Math.abs(du) / 2.5));
+    const ramp = Math.min(0.5, 9 / Math.abs(du)); // the part of the way spent stepping on / off the lane
+    const lift = 0.03;
+    const pts: THREE.Vector3[] = [];
+    for (let i = 0; i <= n; i++) {
+      const t = i / n;
+      const u = ua + du * t;
+      const on = smoothstep(0, ramp, t) * smoothstep(1, 1 - ramp, t);
+      const r = THREE.MathUtils.lerp(t < 0.5 ? ra : rb, laneR, on);
+      const yEnd = t < 0.5 ? a.y : b.y;
+      const y = THREE.MathUtils.lerp(yEnd, this.helixY(u) + lift, on);
+      pts.push(cyl(u % 360, r, y));
+    }
+    pts[0].copy(a);
+    pts[n].copy(b);
+    return pts;
+  }
+
   private buildRoute(route: Route, nusach: string): void {
     const g = new THREE.Group();
     const stopPts = route.stops.map((_, i) => this.stopPoint(i));
     const pts: THREE.Vector3[] = [];
     const cols: number[] = [];
     const up = new THREE.Color('#c9f6ff'), down = new THREE.Color('#ffc46b'), level = new THREE.Color('#8fd6ff');
+    this.segPts = [];
     for (let i = 0; i < stopPts.length - 1; i++) {
       const a = stopPts[i], b = stopPts[i + 1];
-      const seg = a.distanceTo(b) < 1e-4 ? [a.clone(), b.clone()] : this.arc(a, b, 1 + (i % 3) * 0.15);
-      const dy = b.y - a.y;
-      const c = dy > 0.12 ? up : dy < -0.12 ? down : level;
-      if (pts.length) seg.shift();
-      for (const p of seg) { pts.push(p); cols.push(c.r, c.g, c.b); }
+      const ua = this.stopU(i), ub = this.stopU(i + 1);
+      const seg = this.lanePath(a, ua, b, ub, i);
+      this.segPts.push(seg.map((p) => p.clone()));
+      const c = ub - ua > 30 ? up : ub - ua < -30 ? down : level;
+      const s2 = pts.length ? seg.slice(1) : seg;
+      for (const p of s2) { pts.push(p); cols.push(c.r, c.g, c.b); }
     }
     this.routePts = pts;
     if (pts.length >= 2) {
@@ -707,6 +747,7 @@ export class PrayerWorld {
     const from: View = { t: this.view.t.clone(), az: this.view.az, d: this.view.d };
     to = { t: to.t.clone(), az: from.az + angleDelta(from.az / D2R, to.az / D2R) * D2R, d: THREE.MathUtils.clamp(to.d, MIN_D, MAX_D) };
     this.flight?.resolve();
+    if (this.travel) { const tr = this.travel; this.travel = null; tr.resolve(); }
     this.vel.az = this.vel.y = 0;
     if (this.reduceMotion) {
       this.view = to;
@@ -729,6 +770,52 @@ export class PrayerWorld {
     const n = this.nodes[i];
     const t = this.nodePos[i].clone().addScaledVector(radialAt(n.a), 0.03).add(new THREE.Vector3(0, -0.035, 0));
     return this.flyTo({ t, az: n.a * D2R, d });
+  }
+
+  /**
+   * Travel from one stop of the route to the next along the ladder's lane: the camera rides the path, passing the
+   * prayers in between, and settles on the new stop. Falls back to a direct flight for non-adjacent stops.
+   */
+  travelTo(from: number, to: number): Promise<void> {
+    const seg = to === from + 1 ? this.segPts[from] : to === from - 1 ? this.segPts[to] && [...this.segPts[to]].reverse() : null;
+    const node = this.route?.stops[to]?.n;
+    if (!seg || seg.length < 3 || this.reduceMotion || !node) return node ? this.flyToNode(node) : Promise.resolve();
+    this.cancelFlight();
+    this.travel?.resolve();
+    const cum = [0];
+    for (let i = 1; i < seg.length; i++) cum.push(cum[i - 1] + seg[i].distanceTo(seg[i - 1]));
+    const ang: number[] = [];
+    let prev = angleOf(seg[0]);
+    let acc = prev;
+    for (const p of seg) { const a = angleOf(p); acc += angleDelta(prev, a); prev = a; ang.push(acc * D2R); }
+    const total = cum[cum.length - 1];
+    const dur = THREE.MathUtils.clamp((0.7 + total / 2.4) / this.speed, 0.45, 16) * 1000;
+    return new Promise((resolve) => {
+      this.travel = { pts: seg, cum, ang, from: { t: this.view.t.clone(), az: this.view.az, d: this.view.d }, t0: performance.now(), dur, dMid: THREE.MathUtils.clamp(0.55 + total * 0.04, 0.6, 1.1), resolve };
+      this.vel.az = this.vel.y = 0;
+    });
+  }
+
+  private stepTravel(): void {
+    const tr = this.travel!;
+    const t = Math.min(1, (performance.now() - tr.t0) / tr.dur);
+    const e = t * t * (3 - 2 * t);
+    const s = e * tr.cum[tr.cum.length - 1];
+    let i = 1;
+    while (i < tr.cum.length - 1 && tr.cum[i] < s) i++;
+    const f = (s - tr.cum[i - 1]) / (tr.cum[i] - tr.cum[i - 1] || 1);
+    const p = tr.pts[i - 1].clone().lerp(tr.pts[i], f);
+    const az = THREE.MathUtils.lerp(tr.ang[i - 1], tr.ang[i], f);
+    const target = p.clone().addScaledVector(radialAt(az / D2R), 0.03).add(new THREE.Vector3(0, -0.035, 0));
+    const d = 0.46 + (tr.dMid - 0.46) * Math.sin(Math.PI * e);
+    // ease in from wherever the camera was; keep the azimuth continuous with it
+    const w = smoothstep(0, 0.18, t);
+    const fromAz = tr.from.az;
+    const pathAz = az + Math.round((fromAz - tr.ang[0]) / (Math.PI * 2)) * Math.PI * 2;
+    this.view.t.lerpVectors(tr.from.t, target, w);
+    this.view.az = THREE.MathUtils.lerp(fromAz, pathAz, w);
+    this.view.d = Math.exp(THREE.MathUtils.lerp(Math.log(tr.from.d), Math.log(d), w));
+    if (t >= 1) { this.travel = null; tr.resolve(); }
   }
 
   flyToRegion(id: string): Promise<void> {
@@ -773,7 +860,13 @@ export class PrayerWorld {
   }
 
   /** stop a camera flight; whoever awaits it carries on (a journey must never hang on an interrupted flight) */
-  private cancelFlight(): void { const f = this.flight; this.flight = null; f?.resolve(); }
+  private cancelFlight(): void {
+    const f = this.flight, tr = this.travel;
+    this.flight = null;
+    this.travel = null;
+    f?.resolve();
+    tr?.resolve();
+  }
 
   setInsets(i: Partial<typeof this.insets>): void { this.insets = { left: 0, right: 0, top: 0, bottom: 0, ...i }; }
   get focusScreen(): { x: number; y: number } { return { x: this.width / 2 - this.viewOff.x, y: this.height / 2 - this.viewOff.y }; }
@@ -783,7 +876,8 @@ export class PrayerWorld {
 
   private updateCamera(): void {
     const f = this.flight;
-    if (f) {
+    if (this.travel) this.stepTravel();
+    else if (f) {
       const t = Math.min(1, (performance.now() - f.t0) / f.dur);
       const e = easeInOutCubic(t);
       this.view.t.lerpVectors(f.from.t, f.to.t, e);
@@ -1051,12 +1145,12 @@ export class PrayerWorld {
     for (const m of this.metalMats) { m.opacity = ghost; m.depthWrite = ghost > 0.95; }
 
     if (this.routeMat) {
-      if (!this.reduceMotion) this.routeMat.dashOffset = -this.time * 0.08;
+      if (!this.reduceMotion) this.routeMat.dashOffset = -this.time * 0.08 * this.speed;
       this.routeMat.opacity = 0.45 + 0.5 * smoothstep(0.25, 1.2, d);
     }
     if (this.comet && this.routePts.length > 1) {
       const total = this.routeCum[this.routeCum.length - 1];
-      const dd = this.reduceMotion ? 0 : (this.time * Math.max(0.08, total / 24)) % total;
+      const dd = this.reduceMotion ? 0 : (this.time * this.speed * Math.max(0.08, total / 40)) % total;
       let i = 1;
       while (i < this.routeCum.length - 1 && this.routeCum[i] < dd) i++;
       const segLen = this.routeCum[i] - this.routeCum[i - 1] || 1;

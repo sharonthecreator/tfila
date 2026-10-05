@@ -1,5 +1,5 @@
 // The lab panels around the instrument: explain card, readouts, control dock and the LIVE inset.
-import { state, nodeById, regionById, nusachById, worldById, currentRoute, textRecord, stopOff, KIND_HE, STATUS_HE, REL_IN_HE, REL_HE } from '../state';
+import { state, nodeById, regionById, nusachById, worldById, currentRoute, textRecord, stopOff, KIND_HE, STATUS_HE, REL_IN_HE, REL_HE, SPEEDS } from '../state';
 import type { NusachId, PrayerNode, Route, TextStatus } from '../types';
 import { escapeHtml, fmt } from '../hebrew';
 import { loadText } from '../data';
@@ -314,6 +314,10 @@ export function renderDock(): void {
         <div class="ticks">${secs.filter((_, k) => secs.length <= 7 || k % 2 === 0).map((x) => `<span style="right:${pct(x.start, n)}%">${escapeHtml(x.name.split(' ').slice(0, 2).join(' '))}</span>`).join('')}</div>
       </div>
       <div class="quick">${secs.map((x) => `<button class="btn" data-stop="${x.start}" aria-pressed="${state.stopIndex >= x.start && state.stopIndex <= x.end}" style="color:${x.color}"><span class="sw"></span><span style="color:#d9e1ed">${escapeHtml(x.name)}</span></button>`).join('')}</div>
+      <div class="pace"><span class="lbl" id="paceLbl">קצב המסע</span>
+        <div class="seg" role="radiogroup" aria-labelledby="paceLbl">${SPEEDS.map((x) => `<button role="radio" data-speed="${x.v}" aria-checked="${x.v === state.speed}" aria-pressed="${x.v === state.speed}" title="${x.he} — ${x.v}×  (מקשים [ ו־])">${x.he}</button>`).join('')}</div>
+        <button class="btn journey-btn" data-act="journey" aria-pressed="${state.journey}">${state.journey ? '❚❚ עצירת המסע' : '▶ מסע מודרך'}</button>
+      </div>
     </div>`;
   } else {
     const rs = [...state.world.routes].sort((a, b) => Number(b.featured) - Number(a.featured));
@@ -327,7 +331,7 @@ export function renderDock(): void {
     return `<button class="btn" data-ns="${x.id}" aria-pressed="${x.id === state.nusach}" title="${escapeHtml(x.name)} — ${coverage(x.id)}/${state.world.nodes.length} עם טקסט">${coverageGlyph(frac, x.color, x.short[0])}<span>${escapeHtml(x.short)}</span></button>`;
   }).join('');
   const third = route
-    ? `<button class="btn" data-act="overview">מבט על המסלול</button><button class="btn" data-act="focus">אל התחנה</button><button class="btn" data-act="read">קריאה</button><button class="btn" data-act="journey" aria-pressed="${state.journey}">${state.journey ? '❚❚ עצירה' : '▶ מסע מודרך'}</button>`
+    ? `<button class="btn" data-act="overview">מבט על המסלול</button><button class="btn" data-act="focus">אל התחנה</button><button class="btn" data-act="read">קריאה</button>`
     : `<button class="btn" data-act="overview">מבט כללי</button><button class="btn" data-act="read" ${state.nodeId ? '' : 'disabled'}>קריאה</button><button class="btn" data-act="library">ספרייה</button><button class="btn" data-act="learn">למדו</button>`;
   el.innerHTML = `${first}
     <div class="ctl ns-ctl"><div class="ctl-head"><span class="lbl">נוסח</span><output style="color:${ns.color}">${escapeHtml(ns.name)}</output></div><div class="ns-tiles" role="group" aria-label="בחירת נוסח">${tiles}</div></div>
@@ -341,6 +345,7 @@ export function renderDock(): void {
   el.querySelectorAll<HTMLElement>('[data-route]').forEach((b) => (b.onclick = () => emit('route', b.dataset.route)));
   el.querySelectorAll<HTMLElement>('[data-ns]').forEach((b) => (b.onclick = () => emit('nusach', b.dataset.ns)));
   el.querySelectorAll<HTMLElement>('[data-rel]').forEach((b) => (b.onclick = () => emit('relview', b.dataset.rel === '1')));
+  el.querySelectorAll<HTMLElement>('[data-speed]').forEach((b) => (b.onclick = () => emit('speed', Number(b.dataset.speed))));
   el.querySelectorAll<HTMLElement>('[data-act]').forEach((b) => (b.onclick = () => emit(b.dataset.act!)));
   document.documentElement.style.setProperty('--dock-h', el.offsetHeight + 'px');
 }

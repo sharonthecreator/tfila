@@ -11,6 +11,8 @@ export interface AppState {
   routeId: string | null;
   stopIndex: number;
   journey: boolean;
+  /** pace of the guided journey and of travel along the ladder: 0.5 (slow) … 3 (fast) */
+  speed: number;
   reduceMotion: boolean;
   tab: Tab;
   quality: Quality;
@@ -28,6 +30,7 @@ export const state = {
   routeId: null,
   stopIndex: -1,
   journey: false,
+  speed: 1,
   reduceMotion: false,
   tab: 'world',
   quality: 'auto',
@@ -67,6 +70,9 @@ export function textRecord(node: PrayerNode, nusach: NusachId, stop?: Stop | nul
 }
 
 export const stopOff = (s: Stop, nusach: NusachId = state.nusach): boolean => s.omit || (!!s.only && !s.only.includes(nusach));
+
+/** the pace steps offered in the dock */
+export const SPEEDS: { v: number; he: string }[] = [{ v: 0.5, he: 'איטי' }, { v: 1, he: 'רגיל' }, { v: 2, he: 'מהיר' }, { v: 3, he: 'מהיר מאוד' }];
 
 export const KIND_HE: Record<Kind, string> = {
   core: 'חלק קבוע',

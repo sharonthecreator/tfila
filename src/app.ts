@@ -1,7 +1,7 @@
 // tfila application: wires the instrument (the prayer ladder) to the lab UI, routes, reader and views.
 // Navigation is layered — the ladder › a route › a stop (or the ladder › a prayer) — and every layer change
 // is a browser history entry, so the browser's / phone's Back button and the on-screen "חזרה" both step up.
-import { state, set, subscribe, nodeById, routeById, nusachById, regionById, currentRoute, KIND_HE, STATUS_HE, type Quality, type Tab } from './state';
+import { state, set, subscribe, nodeById, routeById, nusachById, regionById, currentRoute, KIND_HE, STATUS_HE, SPEEDS, type Quality, type Tab } from './state';
 import type { NusachId } from './types';
 import { loadWorld, loadPreview } from './data';
 import { escapeHtml } from './hebrew';
@@ -40,6 +40,7 @@ export async function boot(): Promise<void> {
         world3d.setWorld(state.world);
         world3d.setReduceMotion(state.reduceMotion);
         world3d.setRelView(state.relView);
+        world3d.speed = state.speed;
         world3d.onSlow = () => {
           if (state.quality !== 'auto') return;
           const lvl = resolvePreset('auto').level;
@@ -84,13 +85,14 @@ function readPrefs(): void {
     const p = JSON.parse(localStorage.getItem('tfila.prefs') || '{}');
     if (p.nusach) state.nusach = p.nusach;
     if (p.quality) state.quality = p.quality;
+    if (typeof p.speed === 'number' && p.speed >= 0.5 && p.speed <= 3) state.speed = p.speed;
     state.reduceMotion = typeof p.reduceMotion === 'boolean' ? p.reduceMotion : sysReduce;
   } catch {
     state.reduceMotion = sysReduce;
   }
 }
 function savePrefs(): void {
-  try { localStorage.setItem('tfila.prefs', JSON.stringify({ nusach: state.nusach, reduceMotion: state.reduceMotion, quality: state.quality })); } catch { /* ignore */ }
+  try { localStorage.setItem('tfila.prefs', JSON.stringify({ nusach: state.nusach, reduceMotion: state.reduceMotion, quality: state.quality, speed: state.speed })); } catch { /* ignore */ }
 }
 interface NavTarget { nusach: NusachId | null; route: string | null; stop: number; node: string | null; tab: Tab }
 function parseHash(): NavTarget {
@@ -225,6 +227,12 @@ subscribe((ch) => {
     savePrefs();
   }
   if (ch.relView) { world3d?.setRelView(state.relView); renderDock(); }
+  if (ch.speed) {
+    if (world3d) world3d.speed = state.speed;
+    savePrefs();
+    renderDock();
+    announce(`קצב המסע: ${SPEEDS.find((x) => x.v === state.speed)?.he || state.speed}`);
+  }
   if (ch.tab) applyTab();
 });
 
@@ -298,12 +306,15 @@ function selectStop(i: number): Promise<void> {
   const route = currentRoute();
   if (!route) return Promise.resolve();
   i = Math.max(0, Math.min(route.stops.length - 1, i));
+  const from = state.stopIndex;
   set({ stopIndex: i, nodeId: route.stops[i].n });
   world3d?.setStop(i);
   renderAll();
   if (isReaderOpen()) void openReader(route.stops[i].n, { stopIndex: i });
   announce(`תחנה ${i + 1} מתוך ${route.stops.length}: ${nodeById(route.stops[i].n).title}`);
-  return world3d ? world3d.flyToNode(route.stops[i].n) : Promise.resolve();
+  // to the next or previous stop the camera travels along the ladder's lane; further jumps fly directly
+  if (!world3d) return Promise.resolve();
+  return Math.abs(i - from) === 1 ? world3d.travelTo(from, i) : world3d.flyToNode(route.stops[i].n);
 }
 
 function read(): void {
@@ -324,7 +335,8 @@ function startJourney(): void {
     if (!state.journey) return;
     if (i >= route.stops.length) { stopJourney(); void world3d?.overview(); announce('המסע הסתיים'); return; }
     await selectStop(i++);
-    if (state.journey) journeyTimer = window.setTimeout(step, state.reduceMotion ? 4600 : 4000);
+    // the time spent at each stop, so its words can be read — set by the pace control
+    if (state.journey) journeyTimer = window.setTimeout(step, (state.reduceMotion ? 4600 : 4000) / state.speed);
   };
   void step();
 }
@@ -374,6 +386,7 @@ function bindUi(): void {
   on('focus', () => { const r = currentRoute(); if (r && state.stopIndex >= 0) void world3d?.flyToNode(r.stops[state.stopIndex].n); });
   on('nusach', (ns) => set({ nusach: ns as NusachId }));
   on('relview', (v) => set({ relView: v as boolean }));
+  on('speed', (v) => set({ speed: v as number }));
   on('library', () => set({ tab: 'library' }));
   on('learn', () => set({ tab: 'learn' }));
   on('tab', (t) => set({ tab: t as Tab }));
@@ -416,6 +429,11 @@ function bindUi(): void {
       if (state.tab !== 'world') return set({ tab: 'world' });
       if (state.journey) return stopJourney();
       if (state.routeId || state.nodeId) return goUp();
+    }
+    if (!typing && (e.key === '[' || e.key === ']')) {
+      const k = SPEEDS.findIndex((x) => x.v === state.speed);
+      const next = SPEEDS[Math.max(0, Math.min(SPEEDS.length - 1, (k < 0 ? 1 : k) + (e.key === ']' ? 1 : -1)))];
+      set({ speed: next.v });
     }
     if (!typing && state.routeId && state.tab === 'world' && !isReaderOpen() && (e.key === 'n' || e.key === 'p')) {
       stopJourney();

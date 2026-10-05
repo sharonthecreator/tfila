@@ -460,3 +460,9 @@ body.reduce-motion *, body.reduce-motion *::before, body.reduce-motion *::after 
   .crumbs { top: 150px; left: 12px; right: 12px; transform: none; max-width: none; }
   .crumbs .crumb { max-width: 140px; }
 }
+
+/* pace of the guided journey */
+.pace { display: flex; align-items: center; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
+.pace .seg button { padding: 6px 10px; font-size: 12px; }
+.pace .journey-btn { margin-inline-start: auto; color: var(--accent-2); border-color: rgba(95,224,255,.35); }
+.pace .journey-btn[aria-pressed='true'] { background: rgba(95,224,255,.14); }
