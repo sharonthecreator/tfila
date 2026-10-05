@@ -50,7 +50,7 @@ export const NATURE = {
 /** Noise, wind, light, haze and shadows, for every nature shader. Uses NATURE's uniforms. */
 export const NATURE_GLSL = /* glsl */ `
 #define GROUND_Y ${f(TABLE_Y)}
-#define TRUNK_R 0.42
+#define TRUNK_R 0.47
 const vec3 KEY_DIR = ${v3(KEY_DIR)};
 const vec3 KEY_COL = ${v3(KEY_COLOR.clone().multiplyScalar(KEY_INTENSITY / Math.PI))};
 const vec3 FILL_DIR = ${v3(FILL_DIR)};

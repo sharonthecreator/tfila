@@ -105,11 +105,11 @@ export function growCrown(o: CrownOpts): Crown {
   const N = 6;
   for (let i = 0; i < N; i++) {
     const a = (i / N) * Math.PI * 2 + (rnd() - 0.5) * 0.35;
-    // the limbs rise out of the top of the trunk, their swelling bases breaking through its rim
-    const start = new THREE.Vector3(Math.cos(a) * o.trunkR * 0.45, o.top - 0.32, Math.sin(a) * o.trunkR * 0.45);
+    // the limbs rise out of the top of the trunk, their bases held within its swelling rim
+    const start = new THREE.Vector3(Math.cos(a) * o.trunkR * 0.3, o.top - 0.32, Math.sin(a) * o.trunkR * 0.3);
     const el = (66 + rnd() * 10) * THREE.MathUtils.DEG2RAD;
     const dir = new THREE.Vector3(Math.cos(a) * Math.cos(el), Math.sin(el), Math.sin(a) * Math.cos(el));
-    grow(start, dir, 1.95 + rnd() * 0.4, o.trunkR * 0.5, 0, masses++);
+    grow(start, dir, 1.95 + rnd() * 0.4, o.trunkR * 0.44, 0, masses++);
   }
 
   // leaves: sprigs in masses around the clumps; the masses are flattened a little, like the layered clouds of an oak

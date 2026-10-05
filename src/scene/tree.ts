@@ -115,8 +115,8 @@ export function createTrunkMaterial(o: TrunkOpts): THREE.ShaderMaterial {
         float ll = 0.0;
         for (int i = 0; i < 6; i++) ll += pow(max(cos(th - uLimbA[i]), 0.0), 8.0);
         // where the limbs part, the trunk swells toward each of them and then closes over among their bases
-        r *= 1.0 + smoothstep(uTopY - 0.7, uTopY, y) * 0.06 * ll;
-        r *= 1.0 - 0.5 * smoothstep(uTopY - 0.25, uTopY + 0.3, y);
+        r *= 1.0 + smoothstep(uTopY - 0.8, uTopY, y) * 0.2 * ll;
+        r *= 1.0 - 0.4 * smoothstep(uTopY - 0.02, uTopY + 0.32, y);
         // an old trunk is never round: broad bulges and a slow twist
         r *= 1.0 + 0.055 * sin(th * 2.0 + y * 0.9 + 1.3) + 0.035 * sin(th * 3.0 - y * 1.7) + 0.02 * sin(y * 7.3 - th * 3.0);
         vec3 q = vec3(sin(th) * TRUNK_R * 6.5, y * 1.3, cos(th) * TRUNK_R * 6.5);
@@ -469,7 +469,7 @@ export function createTree(o: TreeOpts): Tree {
 
   const RADIAL = [16, 10, 7, 5], SEGS = [6, 4, 3, 2];
   const limbs = new THREE.Mesh(branchGeometry(crown.branches.map((b) => ({
-    curve: new THREE.CatmullRomCurve3(b.pts), segs: b.pts.length * SEGS[b.level], radial: RADIAL[b.level], r0: b.r0, r1: b.r1, flare: b.level === 0 ? 0.6 : 0.18,
+    curve: new THREE.CatmullRomCurve3(b.pts), segs: b.pts.length * SEGS[b.level], radial: RADIAL[b.level], r0: b.r0, r1: b.r1, flare: b.level === 0 ? 0.35 : 0.18,
   }))), bark);
   limbs.name = 'branches';
   limbs.castShadow = true;

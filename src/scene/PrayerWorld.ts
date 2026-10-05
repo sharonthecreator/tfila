@@ -21,7 +21,7 @@ import type { QualityPreset } from '../render/quality';
 
 const REL_COLORS: Record<string, string> = { contains: '#ffd27a', adds: '#5dffa2', varies: '#c9a2ff', related: '#7fb2ff' };
 export const MIN_D = 0.14, MAX_D = 26;
-const PILLAR_R = 0.42;
+const PILLAR_R = 0.47;
 /** the sun stands this high above the ladder's head */
 const SUN_H = 0.95;
 const TILE = 0.1;
