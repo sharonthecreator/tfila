@@ -10,9 +10,10 @@ import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
 import type { PrayerNode, Route, World } from '../types';
 import { cyl, radialAt, angleOf, angleDelta, smoothstep, easeInOutCubic, D2R } from './geo';
-import { makePillarTexture, makeMedallion, makeBackdrop } from './textures';
-import { createStudioEnvironment } from './environment';
-import { createBase, createMotes, TABLE_Y } from './instrument';
+import { makePillarTexture, makeMedallion } from './textures';
+import { createSkyEnvironment } from './environment';
+import { createMotes, TABLE_Y } from './instrument';
+import { createSky, createGround, createGrass, createStones, createTree, makeRaysTexture, SKY } from './nature';
 import { Pipeline } from '../render/Pipeline';
 import type { QualityPreset } from '../render/quality';
 
@@ -76,6 +77,10 @@ export class PrayerWorld {
 
   private keyLight!: THREE.DirectionalLight;
   private motes: THREE.Points | null = null;
+  private sky!: THREE.Mesh;
+  private grass: THREE.Mesh | null = null;
+  private rays: THREE.Sprite | null = null;
+  private canopy: THREE.Group | null = null;
   private ladder = new THREE.Group();
   private pillar!: THREE.Mesh;
   private pillarMat!: THREE.ShaderMaterial;
@@ -148,12 +153,15 @@ export class PrayerWorld {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
-    this.scene.background = makeBackdrop();
-    this.scene.environment = createStudioEnvironment(this.renderer);
+    // the evening of Jacob's dream: sky, haze, a meadow, the stones of the place
+    this.sky = createSky();
+    this.scene.add(this.sky);
+    this.scene.environment = createSkyEnvironment(this.renderer, this.sky);
+    this.scene.fog = new THREE.FogExp2(SKY.fog, 0.022);
     this.scene.add(this.ladder);
     this.buildLights();
     this.buildBeam();
-    this.scene.add(createBase());
+    this.scene.add(createGround(), createStones());
     this.applyQuality(preset);
     this.bindInput();
     this.resize();
@@ -163,8 +171,9 @@ export class PrayerWorld {
 
   // ───────────────────────────── construction ─────────────────────────────
   private buildLights(): void {
-    const key = new THREE.DirectionalLight('#fff3e2', 2.4);
-    key.position.set(-4, 8, 5);
+    // the sun stands at the head of the ladder; its light falls warm and high
+    const key = new THREE.DirectionalLight('#ffe6bf', 2.6);
+    key.position.set(-3, 9, 4);
     key.castShadow = true;
     key.shadow.camera.left = key.shadow.camera.bottom = -3.4;
     key.shadow.camera.right = key.shadow.camera.top = 3.4;
@@ -175,9 +184,9 @@ export class PrayerWorld {
     key.shadow.radius = 5;
     key.target.position.set(0, 0.2, 0);
     this.keyLight = key;
-    const rim = new THREE.DirectionalLight('#9fc4ff', 1.1);
+    const rim = new THREE.DirectionalLight('#9fc4ff', 0.9);
     rim.position.set(2, 4, -6);
-    this.scene.add(key, key.target, rim, new THREE.HemisphereLight('#2a3446', '#050608', 0.4));
+    this.scene.add(key, key.target, rim, new THREE.HemisphereLight('#8fb2e8', '#2c3a1e', 0.75));
   }
 
   private buildBeam(): void {
@@ -209,6 +218,9 @@ export class PrayerWorld {
     if (this.motes) { this.scene.remove(this.motes); this.motes.geometry.dispose(); }
     this.motes = createMotes(p.motes);
     this.scene.add(this.motes);
+    if (this.grass) { this.scene.remove(this.grass); this.grass.geometry.dispose(); }
+    this.grass = createGrass(p.grass);
+    this.scene.add(this.grass);
     if (first) this.pipeline = new Pipeline(this.renderer, this.scene, this.camera, p.msaa, p.bloomLevels);
     else this.pipeline.setMultisampling(p.msaa);
     if (!first && this.world) {
@@ -234,7 +246,7 @@ export class PrayerWorld {
     this.view = { t: new THREE.Vector3(0, this.midY, 0), az: 0.35, d: this.homeD() * 1.25 };
   }
 
-  private get midY(): number { return (TABLE_Y - 0.3 + this.L.top + 1.2) / 2; }
+  private get midY(): number { return (TABLE_Y - 0.3 + this.L.top + 2.0) / 2; }
 
   /** unwrapped helix angle (deg) of a node: world index × 360 + its sector angle */
   private unwrapped(n: PrayerNode): number { return this.world.worlds.findIndex((w) => w.id === n.world) * 360 + n.a; }
@@ -243,7 +255,7 @@ export class PrayerWorld {
   private buildLadder(): void {
     const { rIn, rOut, turns, top } = this.L;
     this.ladder.clear();
-    const polished = withCutaway(new THREE.MeshPhysicalMaterial({ color: '#dfe3e8', metalness: 1, roughness: 0.16, clearcoat: 0.3 }));
+    const polished = withCutaway(new THREE.MeshPhysicalMaterial({ color: '#efe2c2', metalness: 1, roughness: 0.2, clearcoat: 0.3 }));
     const satin = withCutaway(new THREE.MeshPhysicalMaterial({ color: '#ffffff', metalness: 1, roughness: 0.32 }));
     // close up, the metal steps back to a ghost so the medallion and its words carry the view
     for (const m of [polished, satin]) { m.transparent = true; m.userData.base = 1; }
@@ -271,8 +283,8 @@ export class PrayerWorld {
       glow.renderOrder = 2;
       this.ladder.add(glow);
       // posts down to the pedestal, and finials at the top
-      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.011, this.L.base - (TABLE_Y + 0.12), 10), polished);
-      post.position.copy(cyl(0, r, (this.L.base + TABLE_Y + 0.12) / 2));
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.011, this.L.base - TABLE_Y, 10), polished);
+      post.position.copy(cyl(0, r, (this.L.base + TABLE_Y) / 2));
       post.castShadow = true;
       this.ladder.add(post);
       const fin = new THREE.Mesh(new THREE.SphereGeometry(0.026, 20, 14), new THREE.MeshBasicMaterial({ color: '#fff6dc' }));
@@ -299,17 +311,25 @@ export class PrayerWorld {
     this.ladder.add(inst);
 
     // pillar of words
-    const bottom = TABLE_Y + 0.12, ptop = top + 0.12;
+    const bottom = TABLE_Y, ptop = top + 0.12;
     this.pillarMat = new THREE.ShaderMaterial({
       uniforms: {
         uWords: { value: null }, uHas: { value: 0 }, uTime: { value: 0 }, uCam: { value: new THREE.Vector3() },
         uLight: { value: new THREE.Vector3(-0.45, 0.65, 0.6).normalize() }, uSel: { value: new THREE.Vector3(0, 0, 0) },
         uBase: { value: this.L.base }, uTurnH: { value: this.L.turnH }, uTurns: { value: turns },
-        uWorldCols: { value: worldColors.map((c) => new THREE.Vector3(c.r, c.g, c.b)) }, uWordsK: { value: 1 },
+        uWorldCols: { value: worldColors.map((c) => new THREE.Vector3(c.r, c.g, c.b)) }, uWordsK: { value: 1 }, uFoot: { value: TABLE_Y },
       },
       vertexShader: /* glsl */ `
         varying vec3 vN; varying vec2 vUv; varying vec3 vW;
-        void main(){ vN = normalize(mat3(modelMatrix)*normal); vUv = uv; vec4 w = modelMatrix*vec4(position,1.); vW = w.xyz;
+        uniform float uFoot;
+        void main(){
+          vN = normalize(mat3(modelMatrix)*normal); vUv = uv;
+          // a living trunk: flaring into the roots at the foot, gently irregular along its height
+          vec3 p = position;
+          float flare = 1.0 + 0.55 * pow(1.0 - smoothstep(uFoot, uFoot + 0.7, p.y), 2.0);
+          float wob = 1.0 + 0.035 * sin(p.y * 3.1 + atan(p.x, p.z) * 2.0) + 0.02 * sin(p.y * 7.3);
+          p.xz *= flare * wob;
+          vec4 w = modelMatrix*vec4(p,1.); vW = w.xyz;
           gl_Position = projectionMatrix*viewMatrix*w; }`,
       fragmentShader: /* glsl */ `
         uniform sampler2D uWords; uniform float uHas; uniform float uTime; uniform vec3 uCam; uniform vec3 uLight; uniform vec3 uSel;
@@ -323,31 +343,38 @@ export class PrayerWorld {
           float u = (vW.y - uBase) / uTurnH - vUv.x;           // helix coordinate: integer = a rung of world u
           float w = clamp(floor(u + 0.5), 0.0, uTurns - 1.0);
           vec3 wc = w < 0.5 ? uWorldCols[0] : w < 1.5 ? uWorldCols[1] : w < 2.5 ? uWorldCols[2] : uWorldCols[3];
-          vec3 base = mix(vec3(0.004,0.005,0.009), vec3(0.016,0.02,0.032), lit*lit);
+          // bark: vertical furrows, broken by knots and fine grain
+          float fx = ang * 13.0 + sin(vW.y * 1.7 + ang * 5.0) * 1.3 + sin(vW.y * 4.3 + ang * 2.0) * 0.45;
+          float furrow = pow(smoothstep(0.1, 0.85, abs(sin(fx + sin(vW.y * 11.0 + ang * 17.0) * 0.35))), 0.7) * (0.8 + 0.2 * sin(ang * 31.0 + vW.y * 3.0));
+          float grain = 0.5 + 0.5 * sin(vW.y * 90.0 + ang * 40.0 + sin(ang * 23.0) * 4.0);
+          vec3 barkDark = vec3(0.045, 0.03, 0.02), barkLight = vec3(0.17, 0.12, 0.08);
+          vec3 base = mix(barkDark, barkLight, furrow * (0.75 + 0.25 * grain)) * (0.35 + 0.75 * lit);
           float band = smoothstep(0.5, 0.0, abs(u - floor(u + 0.5))) * step(-0.5, u) * step(u, uTurns - 0.5);
-          base += wc * band * 0.018;
+          base += wc * band * 0.02;
+          // the prayers' words, carved into the bark and glowing with the light from above
           vec4 words = uHas > 0.5 ? texture2D(uWords, vUv) : vec4(0.);
-          base += words.rgb * words.a * (0.8 + 0.4*lit) * 1.25 * uWordsK;
-          // prayer rising: soft bands of light travelling up the pillar
+          vec3 gold = mix(vec3(1.0, 0.78, 0.42), words.rgb * 4.0, 0.25);
+          base = mix(base, base * 0.5, words.a * 0.7) + gold * words.a * (0.6 + 0.4 * lit) * 3.2 * uWordsK;
+          // prayer rising: soft bands of warm light travelling up the trunk
           float rise = pow(0.5 + 0.5*sin(vW.y*5.0 - uTime*0.9 + sin(ang*3.0)*0.4), 18.0);
-          base += vec3(0.55,0.85,1.0) * rise * 0.035;
+          base += vec3(1.0,0.82,0.55) * rise * 0.05;
           // glow behind the prayer in focus
           float da = abs(mod(ang - uSel.x + 3.14159265, 6.2831853) - 3.14159265);
           base += vec3(0.62,0.94,1.0) * uSel.z * exp(-da*da*18.0 - pow((vW.y - uSel.y)*7.0, 2.0)) * 0.22;
-          base += vec3(0.37,0.88,1.0) * fres * 0.1;
+          base += vec3(0.55,0.62,0.8) * fres * 0.08;
           gl_FragColor = vec4(base, 1.0);
         }`,
     });
     this.pillar = new THREE.Mesh(new THREE.CylinderGeometry(PILLAR_R, PILLAR_R, ptop - bottom, 160, 1, true).translate(0, (ptop + bottom) / 2, 0), this.pillarMat);
     this.pillar.castShadow = true;
     this.ladder.add(this.pillar);
-    const crown = new THREE.Mesh(new THREE.TorusGeometry(PILLAR_R, 0.008, 10, 160), new THREE.MeshBasicMaterial({ color: '#fff3cf' }));
-    crown.rotation.x = Math.PI / 2;
-    crown.position.y = ptop;
-    this.ladder.add(crown);
-    const lid = new THREE.Mesh(new THREE.CircleGeometry(PILLAR_R, 96).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: '#2a2a22' }));
-    lid.position.y = ptop - 0.001;
-    this.ladder.add(lid);
+    // the tree: roots into the meadow, and a crown of branches and leaves fanning out above the ladder's head
+    const cap = new THREE.Mesh(new THREE.CircleGeometry(PILLAR_R * 1.02, 64).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: '#3b2a1c', roughness: 1 }));
+    cap.position.y = ptop - 0.001;
+    this.ladder.add(cap);
+    const tree = createTree({ trunkR: PILLAR_R, bottom, top: ptop, leaves: this.preset.leaves });
+    this.canopy = tree.group;
+    this.ladder.add(tree.group);
 
     // world boundaries: faint level rings where each turn ends
     for (let w = 0; w <= turns; w++) {
@@ -362,12 +389,15 @@ export class PrayerWorld {
 
     // heaven: the ladder's head reaches into light
     this.heaven = new THREE.Group();
-    const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture([[0, 'rgba(255,246,220,0.9)'], [0.18, 'rgba(255,226,170,0.35)'], [0.5, 'rgba(120,200,255,0.08)'], [1, 'rgba(95,224,255,0)']]), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
-    halo.scale.setScalar(3.2);
-    const core = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture([[0, 'rgba(255,255,255,1)'], [0.3, 'rgba(255,240,200,0.5)'], [1, 'rgba(255,240,200,0)']]), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
-    core.scale.setScalar(0.7);
-    this.heaven.add(halo, core);
-    this.heaven.position.y = top + 0.62;
+    // the sun at the head of the ladder, crowning the tree
+    const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture([[0, 'rgba(255,248,225,0.95)'], [0.16, 'rgba(255,214,150,0.45)'], [0.45, 'rgba(255,170,90,0.1)'], [1, 'rgba(255,150,80,0)']]), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
+    halo.scale.setScalar(3.6);
+    this.rays = new THREE.Sprite(new THREE.SpriteMaterial({ map: makeRaysTexture(), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false, opacity: 0.7 }));
+    this.rays.scale.setScalar(5.2);
+    const core = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture([[0, 'rgba(255,255,255,1)'], [0.3, 'rgba(255,240,200,0.6)'], [1, 'rgba(255,240,200,0)']]), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
+    core.scale.setScalar(0.95);
+    this.heaven.add(halo, core, this.rays);
+    this.heaven.position.y = top + 0.95;
     this.ladder.add(this.heaven);
 
     // angels ascending and descending
@@ -530,7 +560,7 @@ export class PrayerWorld {
       return { el, pos, w: 0, h: 0, op: 0, far };
     };
     this.captions = [
-      caption('וְרֹאשׁוֹ מַגִּיעַ הַשָּׁמָיְמָה<span class="v">בראשית כח, יב</span>', new THREE.Vector3(0, this.L.top + 1.0, 0), 3.2),
+      caption('וְרֹאשׁוֹ מַגִּיעַ הַשָּׁמָיְמָה<span class="v">בראשית כח, יב</span>', new THREE.Vector3(0, this.L.top + 2.05, 0), 3.2),
       caption('סֻלָּם מֻצָּב אַרְצָה', new THREE.Vector3(0, this.L.base + 0.05, 0), 3.2),
     ];
     this.focusTag = document.createElement('div');
@@ -547,7 +577,7 @@ export class PrayerWorld {
   setPreviews(previews: Record<string, string>): void {
     this.previews = previews;
     const old = this.pillarMat.uniforms.uWords.value as THREE.Texture | null;
-    this.pillarMat.uniforms.uWords.value = makePillarTexture(this.world, previews, { bottom: TABLE_Y + 0.12, top: this.L.top + 0.12, radius: PILLAR_R }, Math.min(2048, this.preset.dustWidth / 2));
+    this.pillarMat.uniforms.uWords.value = makePillarTexture(this.world, previews, { bottom: TABLE_Y, top: this.L.top + 0.12, radius: PILLAR_R }, Math.min(2048, this.preset.dustWidth / 2));
     this.pillarMat.uniforms.uHas.value = 1;
     old?.dispose();
     for (const t of this.tiles.values()) this.disposeTile(t);
@@ -734,10 +764,10 @@ export class PrayerWorld {
     const fov = this.camera.fov * D2R;
     const freeH = Math.max(0.35, (this.height - this.insets.top - this.insets.bottom) / this.height);
     const freeW = Math.max(0.35, (this.width - this.insets.left - this.insets.right) / this.width);
-    const h = this.L.top + 1.5 - TABLE_Y;
+    const h = this.L.top + 2.1 - TABLE_Y;
     const byH = h / 2 / Math.tan(fov / 2) / freeH;
-    const byW = 4.8 / 2 / Math.tan(fov / 2) / (this.camera.aspect * freeW);
-    return THREE.MathUtils.clamp(Math.max(byH, byW) * 1.18, 4, MAX_D);
+    const byW = 6.2 / 2 / Math.tan(fov / 2) / (this.camera.aspect * freeW);
+    return THREE.MathUtils.clamp(Math.max(byH, byW) * 1.3, 4, MAX_D);
   }
 
   /** close up the camera looks down onto the rungs (like down a stair); far away, level with the ladder */
@@ -1139,7 +1169,11 @@ export class PrayerWorld {
     ((this.beam.children[1] as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = this.beamMat.uniforms.uOp.value;
     this.beam.scale.setScalar(THREE.MathUtils.clamp(d * 0.55, 0.25, 2.2));
     this.updateAngels(dt);
-    this.heaven.children[0].scale.setScalar(3.2 + (this.reduceMotion ? 0 : Math.sin(this.time * 0.6) * 0.15));
+    this.heaven.children[0].scale.setScalar(3.6 + (this.reduceMotion ? 0 : Math.sin(this.time * 0.6) * 0.15));
+    if (this.rays) this.rays.material.rotation = t * 0.02;
+    if (this.canopy) this.canopy.rotation.z = Math.sin(t * 0.35) * 0.004; // a breath of wind in the crown
+    (this.sky.material as THREE.ShaderMaterial).uniforms.uTime.value = t;
+    if (this.grass) (this.grass.material as THREE.ShaderMaterial).uniforms.uTime.value = t;
     for (const m of this.railMats) m.opacity = 0.18 + 0.2 * smoothstep(0.6, 3, d);
     const ghost = 0.16 + 0.84 * smoothstep(0.75, 1.5, d);
     for (const m of this.metalMats) { m.opacity = ghost; m.depthWrite = ghost > 0.95; }

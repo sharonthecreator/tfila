@@ -45,3 +45,19 @@ export function createStudioEnvironment(renderer: THREE.WebGLRenderer): THREE.Te
   });
   return rt.texture;
 }
+
+/** Reflections of the evening sky — so the rails and leaves pick up its blue above and warm glow below. */
+export function createSkyEnvironment(renderer: THREE.WebGLRenderer, sky: THREE.Mesh): THREE.Texture {
+  const env = new THREE.Scene();
+  const dome = sky.clone();
+  env.add(dome);
+  const sun = new THREE.Mesh(new THREE.SphereGeometry(4, 16, 8), new THREE.MeshBasicMaterial({ color: new THREE.Color('#fff1d0').multiplyScalar(6), toneMapped: false }));
+  sun.position.set(0, 30, 0);
+  env.add(sun);
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  const rt = pmrem.fromScene(env, 0.04);
+  pmrem.dispose();
+  sun.geometry.dispose();
+  (sun.material as THREE.Material).dispose();
+  return rt.texture;
+}

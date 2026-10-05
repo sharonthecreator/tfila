@@ -45,11 +45,17 @@ The visual language follows the "interactive STEM lesson" style of Opus-built la
 [The Plane of Focus](https://sael.net/plane-of-focus/): a precise physical model at the centre, lit like a product shot,
 surrounded by glass instrument panels with letter-spaced micro-labels, monospace readouts and a control dock.
 
-* **The instrument: Jacob's ladder.** A spiral ladder — two polished rails and a rung under every prayer — stands on a
-  perforated optical breadboard ("מוצב ארצה") and reaches into a light above ("וראשו מגיע השמימה", Genesis 28:12; the
+* **Jacob's ladder.** A spiral ladder — two pale-gold rails and a rung under every prayer — stands on the earth
+  ("מוצב ארצה") and reaches into a light above ("וראשו מגיע השמימה", Genesis 28:12; the
   spiral form follows the classic image of Jacob's ladder as a winding stair). Lights travel up and down the rails —
   "angels of God ascending and descending on it" — as abstract points of light (no figures). Inside stands a pillar of
   the prayers' own words: at every angle and height it carries the words of the prayers on the rung in front of it.
+* **The tree and the evening sky.** The ladder stands in a meadow at dusk ("וילן שם כי בא השמש"). Grass moves in a
+  slow wind and the stones of the place ("ויקח מאבני המקום") lie around its foot. The pillar of words is a tree
+  trunk: it flares into roots in the grass, and the prayers' words are carved into the bark and glow gold. Above the
+  ladder's head the branches fan out into a crown of leaves, open in the middle where the sun stands — the light at the
+  top of the ladder. The sky has a warm horizon, thin clouds and the first stars, its haze meets the meadow without a
+  seam, and the metal and leaves reflect it. Grass and leaf density follow the quality preset.
 * **Four worlds, one turn each.** Bottom to top: עשיה, יצירה, בריאה, אצילות. The Ari (Sha'ar HaKavanot, Sermons on
   Morning Prayers 1) divides Shacharit this way: from the start of the prayer to Baruch She'amar — Asiyah; to Yotzer Or —
   Yetzirah; to the end of the Avot blessing — Beriah; the rest of the Amidah — Atzilut; and in Nefilat Apayim "he stands

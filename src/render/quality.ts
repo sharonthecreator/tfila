@@ -12,12 +12,14 @@ export interface QualityPreset {
   dustWidth: number;
   shell: boolean;
   motes: number;
+  grass: number;
+  leaves: number;
 }
 
 const PRESETS: Record<Exclude<Quality, 'auto'>, QualityPreset> = {
-  low: { dpr: 1, msaa: 0, shadows: false, shadowSize: 512, bloomLevels: 4, tileSize: 512, maxTiles: 10, visibleTiles: 6, dustWidth: 2048, shell: false, motes: 120 },
-  medium: { dpr: 1.5, msaa: 0, shadows: true, shadowSize: 1024, bloomLevels: 5, tileSize: 768, maxTiles: 16, visibleTiles: 9, dustWidth: 4096, shell: true, motes: 260 },
-  high: { dpr: 2, msaa: 4, shadows: true, shadowSize: 2048, bloomLevels: 7, tileSize: 1024, maxTiles: 26, visibleTiles: 12, dustWidth: 4096, shell: true, motes: 420 },
+  low: { dpr: 1, msaa: 0, shadows: false, shadowSize: 512, bloomLevels: 4, tileSize: 512, maxTiles: 10, visibleTiles: 6, dustWidth: 2048, shell: false, motes: 120, grass: 7000, leaves: 1100 },
+  medium: { dpr: 1.5, msaa: 0, shadows: true, shadowSize: 1024, bloomLevels: 5, tileSize: 768, maxTiles: 16, visibleTiles: 9, dustWidth: 4096, shell: true, motes: 260, grass: 16000, leaves: 2000 },
+  high: { dpr: 2, msaa: 4, shadows: true, shadowSize: 2048, bloomLevels: 7, tileSize: 1024, maxTiles: 26, visibleTiles: 12, dustWidth: 4096, shell: true, motes: 420, grass: 30000, leaves: 3200 },
 };
 
 export function autoQuality(): Exclude<Quality, 'auto'> {

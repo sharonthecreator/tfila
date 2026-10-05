@@ -88,7 +88,7 @@ export function createMotes(count: number): THREE.Points {
         vA = (0.35 + 0.65*abs(sin(uTime*0.4 + seed))) * smoothstep(0.8, 2.4, -mv.z);
         gl_PointSize = min(uPR * (1.4 + fract(seed)*1.8) * (6.0 / -mv.z), 5.0 * uPR); }`,
     fragmentShader: /* glsl */ `varying float vA; void main(){ float d = length(gl_PointCoord-0.5); float a = smoothstep(0.5,0.,d)*vA*0.55;
-      gl_FragColor = vec4(vec3(0.75,0.9,1.0)*a, a); }`,
+      gl_FragColor = vec4(vec3(1.0,0.9,0.68)*a, a); }`,
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
   });
   const pts = new THREE.Points(geo, mat);
