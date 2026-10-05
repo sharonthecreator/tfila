@@ -50,17 +50,30 @@ surrounded by glass instrument panels with letter-spaced micro-labels, monospace
   spiral form follows the classic image of Jacob's ladder as a winding stair). Lights travel up and down the rails —
   "angels of God ascending and descending on it" — as abstract points of light (no figures). Inside stands a pillar of
   the prayers' own words: at every angle and height it carries the words of the prayers on the rung in front of it.
-* **The tree and the evening sky.** The ladder stands in a meadow at dusk ("וילן שם כי בא השמש"). Grass moves in a
-  slow wind and the stones of the place ("ויקח מאבני המקום") lie around its foot. The pillar of words is a tree
-  trunk: it flares into roots in the grass, and the prayers' words are carved into the bark and glow gold. Above the
-  ladder's head the trunk divides into six great limbs that rise, curve outward and branch four times into a wide
-  crown, like an old terebinth. The leaves grow in sprigs gathered into masses, deep green inside and lighter on the
-  outside. The sun stands in an open hollow under the crown at the top of the ladder: it lights the limbs and the
-  undersides of the leaves gold and shines through them where you look towards it. The leaves move in the wind,
-  motes of light rise around the sun and a few leaves drift down. All of this stops when motion is reduced. The crown
-  stays above the ladder's top turn, so it never hides the ladder or the prayers. The sky has a warm horizon, thin
-  clouds and the first stars, its haze meets the meadow without a seam, and the metal reflects it. The overview frames the whole tree
-  between the panels. Grass and leaf density, and the motes, follow the quality preset.
+* **The tree and the evening sky.** The ladder stands in a meadow at dusk ("וילן שם כי בא השמש"). The sun has just
+  gone down behind the tree: a warm glow lies low on one side of the sky, the pink belt of Venus over the earth's
+  blue shadow on the other, with long thin clouds lit from below, the first stars, and far hills and treelines
+  dissolving into the haze. One low, warm evening light comes from that glow, and the cool sky fills the shadows.
+  The haze thickens with distance and near the ground and takes its colour from the sky in each direction, so the
+  meadow meets the horizon without a seam. The meadow is real grass: curved blades in clumps, dark at their feet,
+  fresh green up the blade and dry gold at the tips in drier patches, with the low light shining through them. It is
+  dense around the tree and in rings that follow the camera, so it stays full at grass level anywhere, and it thins
+  with distance into a ground of the same colours and noise. There are wildflowers and seed heads, bare earth with
+  leaf litter at the trunk's foot, and the stones of the place ("ויקח מאבני המקום"), weathered, with lichen and moss.
+  One wind of slow gusts rolls across the meadow and through the crown, every blade and sprig fluttering on its own,
+  all on the GPU. The trunk and the crown cast long soft shadows over the grass, and the grass darkens where it meets
+  the trunk, the roots, the stones and the ladder's posts. The pillar of words is the tree's trunk: its bark has long
+  interlacing furrows, plates with fine grain, lichen, and moss toward the foot, where it flares into buttresses and
+  roots that run into the earth. The prayers' words are cut into the bark, gilded and glowing where a rung is near,
+  and legible close up. Above the ladder's head the trunk parts into six great limbs of the same bark that branch four
+  times into a wide crown, like an old terebinth. Its leaves grow in sprigs gathered into masses, dark inside and lit
+  on the side of the evening light, glowing where the light shines through them. The sun stands in an open hollow
+  under the crown at the top of the ladder: it lights the limbs and the undersides of the leaves gold, and rays of
+  light stream out between the limbs. Motes of light rise around the sun and a few leaves drift down. The crown stays
+  above the ladder's top turn, so it never hides or shades the ladder or the prayers, and the rays fade away in the
+  close-ups. A gentle filmic grade (cool shadows, warm highlights, fine grain) finishes the picture. The wind, the
+  drifting leaves and the grain stop when motion is reduced. Grass, flowers, leaves, bark detail, god rays and grain
+  follow the quality preset: the low preset keeps a lighter meadow and a soft painted glow in place of the rays.
 * **Four worlds, one turn each.** Bottom to top: עשיה, יצירה, בריאה, אצילות. The Ari (Sha'ar HaKavanot, Sermons on
   Morning Prayers 1) divides Shacharit this way: from the start of the prayer to Baruch She'amar — Asiyah; to Yotzer Or —
   Yetzirah; to the end of the Avot blessing — Beriah; the rest of the Amidah — Atzilut; and in Nefilat Apayim "he stands
@@ -111,8 +124,8 @@ surrounded by glass instrument panels with letter-spaced micro-labels, monospace
   pages be treated with care (גניזה); Kaddish is described as said only with a minyan; explanations are orientation,
   not halakhic rulings.
 * **Accessibility & performance.** Keyboard throughout (ladder: ←/→ orbit, ↑/↓ PgUp/PgDn climb, ± zoom, Home, Enter; `N`/`P` stops; `/` search; `Esc` back),
-  live-region announcements, reduced-motion mode, quality presets (Auto/Low/Medium/High — Auto steps down if the frame
-  rate drops), and an automatic text-only fallback when WebGL is unavailable. Responsive down to phone width.
+  live-region announcements, reduced-motion mode, quality presets (Auto/Low/Medium/High — Auto starts low on a software-rendered
+  WebGL and steps down if the frame rate drops), and an automatic text-only fallback when WebGL is unavailable. Responsive down to phone width.
 * Deep links keep the nusach, tab, route, stop or prayer (e.g. `#n=em&route=yom-kippur&stop=10`).
 
 **Tech:** TypeScript, Vite, [three.js](https://threejs.org) 0.186 (custom shaders, instanced rungs, fat lines with
@@ -164,6 +177,7 @@ content/      catalog.mjs (prayers, explanations, per-nusach Sefaria refs), rout
 scripts/      fetch-sources.mjs, build-content.mjs, validate-content.mjs, find-kaddish(-all).mjs, dev helpers (peek/find/check)
 public/data/  generated: world.json, t/*.json (texts with attribution), preview-*.json, search-*.json
 src/          app.ts (incl. history/back navigation), ui/ (lab + breadcrumbs, reader, search, views), scene/ (PrayerWorld = the ladder,
-              instrument = the bench, textures, environment, geo), render/ (postprocessing pipeline, quality presets), styles/main.css
+              nature = sky, meadow and stones, tree = trunk, bark, roots and crown,
+              atmosphere = the shared light, wind, haze and shadows, instrument = the bench, textures, environment, geo), render/ (postprocessing pipeline, quality presets), styles/main.css
 tests/        shots.mjs — Playwright interaction + screenshot test
 ```

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { KEY_DIR } from './atmosphere';
 
 /**
  * A small procedural photo studio — dark cyclorama, a large overhead soft box, two tall strip
@@ -51,8 +52,9 @@ export function createSkyEnvironment(renderer: THREE.WebGLRenderer, sky: THREE.M
   const env = new THREE.Scene();
   const dome = sky.clone();
   env.add(dome);
-  const sun = new THREE.Mesh(new THREE.SphereGeometry(4, 16, 8), new THREE.MeshBasicMaterial({ color: new THREE.Color('#fff1d0').multiplyScalar(6), toneMapped: false }));
-  sun.position.set(0, 30, 0);
+  // the glow where the sun went down, low behind the tree
+  const sun = new THREE.Mesh(new THREE.SphereGeometry(6, 16, 8), new THREE.MeshBasicMaterial({ color: new THREE.Color('#ffc890').multiplyScalar(3), toneMapped: false }));
+  sun.position.copy(KEY_DIR).setY(0.12).normalize().multiplyScalar(40);
   env.add(sun);
   const pmrem = new THREE.PMREMGenerator(renderer);
   const rt = pmrem.fromScene(env, 0.04);

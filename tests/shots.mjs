@@ -145,7 +145,10 @@ if (['all', 'journey'].includes(only)) {
   await wait(p, 18000); // software-rendered test browsers run at a couple of frames per second
   const cur = await p.locator('#readouts .ro.big.accent .val').textContent();
   check(parseInt(cur) >= 2, 'guided journey advances (now at ' + cur.trim() + ')');
-  await p.click('#dock [data-act="journey"]');
+  // the dock redraws at every stop of the journey, so press "stop" directly rather than chase a moving button
+  await p.evaluate(() => (document.querySelector('#dock [data-act="journey"]')).click());
+  await wait(p, 600);
+  check(await p.locator('#dock [data-act="journey"][aria-pressed="false"]').count() === 1, 'the journey stops');
   await p.click('#motionBtn');
   check(await p.evaluate(() => document.body.classList.contains('reduce-motion')), 'reduced motion toggles');
   await p.click('#quality [data-q="low"]');

@@ -1,176 +1,268 @@
-// The world around the ladder: a sky at the hour of Jacob's dream ("וילן שם כי בא השמש"), a meadow with grass that
-// moves in the wind, the stones of the place ("ויקח מאבני המקום"), and the tree whose trunk is the pillar of words —
-// its roots in the earth and its branches fanning out around the sun at the head of the ladder.
+// The world around the ladder: a sky at the hour of Jacob's dream ("וילן שם כי בא השמש"), a meadow of grass and
+// wildflowers that moves in the wind, and the stones of the place ("ויקח מאבני המקום"). The tree whose trunk is the
+// pillar of words is in tree.ts; the light, the wind and the haze they all share are in atmosphere.ts.
 import * as THREE from 'three';
 import { TABLE_Y } from './instrument';
-import { growCrown } from './crown';
+import { HAZE_GLSL, NATURE, NATURE_GLSL, ROOTS, KEY_DIR } from './atmosphere';
 
 export const SKY = {
-  zenith: new THREE.Color('#0a1530'),
-  mid: new THREE.Color('#25427a'),
-  horizon: new THREE.Color('#e9a46c'),
-  ground: new THREE.Color('#1a2a16'),
-  fog: new THREE.Color('#9c8579'),
+  /** the base colour of the fog (its real colour comes from the sky in each direction: see atmosphere.ts) */
+  fog: new THREE.Color('#5f5566'),
 };
 
-/** Sky dome: deep blue above, a warm band at the horizon, soft clouds and the first stars. */
+function seeded(seed: number): () => number {
+  let s = seed;
+  return () => ((s = (s * 16807) % 2147483647) / 2147483647);
+}
+
+const KEY_H = new THREE.Vector2(KEY_DIR.x, KEY_DIR.z).normalize();
+
+/**
+ * Sky dome at dusk: deep blue overhead, a warm glow low where the sun has gone down, the pink belt of Venus over the
+ * earth's shadow on the other side, long thin clouds lit from below, the first stars, and far hills and treelines
+ * dissolving into the haze at the horizon.
+ */
 export function createSky(): THREE.Mesh {
   const mat = new THREE.ShaderMaterial({
     side: THREE.BackSide,
     depthWrite: false,
     fog: false,
-    uniforms: {
-      uTime: { value: 0 },
-      uZenith: { value: SKY.zenith }, uMid: { value: SKY.mid }, uHorizon: { value: SKY.horizon }, uGround: { value: SKY.ground },
-      uSun: { value: new THREE.Vector3(0, 1, 0) },
-    },
+    uniforms: { ...NATURE },
     vertexShader: /* glsl */ `varying vec3 vD; void main(){ vD = normalize(position); vec4 p = projectionMatrix * modelViewMatrix * vec4(position, 1.); gl_Position = p.xyww; }`,
     fragmentShader: /* glsl */ `
-      uniform float uTime; uniform vec3 uZenith; uniform vec3 uMid; uniform vec3 uHorizon; uniform vec3 uGround; uniform vec3 uSun;
+      ${NATURE_GLSL}
+      ${HAZE_GLSL}
       varying vec3 vD;
-      float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-      float noise(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f);
-        return mix(mix(hash(i), hash(i+vec2(1,0)), f.x), mix(hash(i+vec2(0,1)), hash(i+vec2(1,1)), f.x), f.y); }
-      float fbm(vec2 p){ float v = 0., a = .5; for (int i = 0; i < 5; i++){ v += a*noise(p); p *= 2.03; a *= .5; } return v; }
+      const vec2 KEY_H = vec2(${KEY_H.x.toFixed(4)}, ${KEY_H.y.toFixed(4)});
       void main(){
         vec3 d = normalize(vD);
-        float y = d.y;
-        vec3 haze = vec3(0.612, 0.522, 0.475);
-        vec3 c = y > 0. ? mix(mix(haze, uHorizon, smoothstep(0.0, 0.04, y)), uMid, smoothstep(0.04, 0.3, y)) : haze;
-        if (y > 0.) c = mix(c, uZenith, smoothstep(0.25, 0.95, y));
-        // a soft glow around the sun overhead
-        float s = max(dot(d, normalize(uSun)), 0.);
-        c += vec3(1.0, 0.85, 0.6) * pow(s, 6.) * 0.35;
-        // clouds: thin, lit warm from below near the horizon
-        vec2 uv = d.xz / max(0.12, y + 0.18) * 1.4 + vec2(uTime * 0.004, 0.);
-        float cl = smoothstep(0.52, 0.8, fbm(uv)) * smoothstep(0.02, 0.2, y) * (1. - smoothstep(0.55, 0.9, y));
-        vec3 cloud = mix(vec3(1.0, 0.72, 0.5), vec3(0.55, 0.62, 0.8), smoothstep(0.05, 0.45, y));
-        c = mix(c, cloud, cl * 0.55);
-        // the first stars, high up
-        vec2 g = d.xz / (y + 1.0) * 220.;
-        float st = step(0.9975, hash(floor(g))) * smoothstep(0.45, 0.9, y) * (0.6 + 0.4*sin(uTime*1.3 + hash(floor(g))*30.));
-        c += vec3(st) * 0.8;
-        gl_FragColor = vec4(c, 1.);
+        float y = d.y, yy = max(y, 0.0);
+        vec2 h = normalize(d.xz + vec2(1e-5));
+        float tw = dot(h, KEY_H) * 0.5 + 0.5;
+        float glow = pow(tw, 4.0);
+        // the dome
+        vec3 zen = vec3(0.008, 0.017, 0.056);
+        vec3 mid = mix(vec3(0.045, 0.075, 0.19), vec3(0.17, 0.15, 0.24), glow);
+        vec3 c = mix(mid, zen, smoothstep(0.0, 0.8, pow(yy, 0.75)));
+        // the horizon band melts into the haze (the fog has the same colour there, so the meadow meets the sky without a seam)
+        vec3 hz = tfHaze(vec3(d.x, 0.0, d.z));
+        c = mix(c, hz, exp(-yy * mix(15.0, 6.5, glow)));
+        // the glow over the place where the sun went down
+        vec3 sd = normalize(vec3(KEY_H.x, -0.05, KEY_H.y));
+        float s = max(dot(d, sd), 0.0);
+        c += vec3(1.0, 0.48, 0.2) * (pow(s, 6.0) * 0.26 + pow(s, 18.0) * 0.16) * smoothstep(-0.02, 0.06, y);
+        // opposite it: the pink belt of Venus over the blue shadow of the earth
+        float anti = pow(1.0 - tw, 2.0);
+        c += vec3(0.2, 0.085, 0.12) * anti * exp(-pow((yy - 0.14) / 0.075, 2.0));
+        c = mix(c, vec3(0.11, 0.12, 0.21), anti * (1.0 - smoothstep(0.0, 0.08, yy)) * 0.45);
+        // long thin clouds, lit from below toward the glow, dusky grey elsewhere
+        vec2 uv = d.xz / (yy + 0.12);
+        vec2 cuv = vec2(dot(uv, vec2(0.86, 0.5)), dot(uv, vec2(-0.5, 0.86))) * vec2(0.5, 2.3) + vec2(uTime * 0.005, 0.0);
+        float cl = smoothstep(0.52, 0.84, fbm2(cuv) * 0.72 + vnoise(cuv * 3.3) * 0.28) * smoothstep(0.035, 0.17, yy) * (1.0 - smoothstep(0.42, 0.8, yy));
+        vec3 cloud = mix(vec3(0.075, 0.07, 0.11), vec3(1.05, 0.5, 0.26), glow * (1.0 - smoothstep(0.06, 0.42, yy)));
+        cloud = mix(cloud, vec3(0.24, 0.12, 0.15), anti * 0.4 * (1.0 - smoothstep(0.1, 0.4, yy)));
+        c = mix(c, cloud, cl * 0.75);
+        // the first stars, high up and away from the glow
+        vec2 g = d.xz / (y + 1.0) * 230.0;
+        float st = step(0.9972, hash12(floor(g))) * smoothstep(0.35, 0.85, y) * (1.0 - glow) * (0.6 + 0.4 * sin(uTime * 1.3 + hash12(floor(g)) * 30.0));
+        c += vec3(st) * 0.7;
+        // far hills, and nearer lines of trees, in the haze
+        if (y < 0.06) {
+          float aa = max(fwidth(y), 1e-4);
+          float hill = 0.006 + 0.026 * fbm2(h * 2.6 + 3.0);
+          float trees = 0.003 + 0.011 * fbm2(h * 7.0 + 11.0);
+          trees += 0.0065 * smoothstep(0.35, 0.8, vnoise(h * 260.0)) * smoothstep(0.35, 0.6, vnoise(h * 11.0));
+          trees *= smoothstep(0.3, 0.55, vnoise(h * 4.0 + 2.0));
+          vec3 hillC = hz * mix(vec3(0.78, 0.8, 0.9), vec3(0.85, 0.75, 0.75), glow);
+          vec3 treeC = hz * mix(vec3(0.5, 0.55, 0.66), vec3(0.6, 0.48, 0.45), glow);
+          c = mix(c, hillC, smoothstep(hill + aa, hill - aa, y));
+          c = mix(c, treeC, smoothstep(trees + aa, trees - aa, y));
+        }
+        if (y < 0.0) c = mix(c, tfHaze(d), smoothstep(0.0, -0.02, y));
+        gl_FragColor = vec4(c, 1.0);
       }`,
   });
-  const sky = new THREE.Mesh(new THREE.SphereGeometry(80, 48, 32), mat);
+  const sky = new THREE.Mesh(new THREE.SphereGeometry(80, 64, 40), mat);
   sky.frustumCulled = false;
   sky.renderOrder = -10;
   sky.name = 'sky';
   return sky;
 }
 
-function canvas(w: number, h: number): [HTMLCanvasElement, CanvasRenderingContext2D] {
-  const c = document.createElement('canvas');
-  c.width = w;
-  c.height = h;
-  return [c, c.getContext('2d')!];
-}
-
-/** Meadow: a large field whose grass texture fades into the evening haze. */
-export function createGround(): THREE.Mesh {
-  const [c, x] = canvas(1024, 1024);
-  x.fillStyle = '#2c4a22';
-  x.fillRect(0, 0, 1024, 1024);
-  for (let i = 0; i < 26000; i++) {
-    const g = 60 + Math.random() * 70, r = 30 + Math.random() * 40, b = 18 + Math.random() * 20;
-    x.strokeStyle = `rgba(${r},${g},${b},${0.25 + Math.random() * 0.4})`;
-    x.lineWidth = 1 + Math.random() * 1.4;
-    const px = Math.random() * 1024, py = Math.random() * 1024;
-    x.beginPath();
-    x.moveTo(px, py);
-    x.lineTo(px + (Math.random() - 0.5) * 6, py - 4 - Math.random() * 10);
-    x.stroke();
-  }
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(26, 26);
-  tex.anisotropy = 8;
-  const ground = new THREE.Mesh(
-    new THREE.CircleGeometry(60, 96).rotateX(-Math.PI / 2),
-    new THREE.MeshStandardMaterial({ map: tex, roughness: 0.95, metalness: 0, color: '#9fb88f' }),
-  );
-  ground.position.y = TABLE_Y;
-  ground.receiveShadow = true;
-  ground.name = 'ground';
-  return ground;
-}
-
-/** Blades of grass around the ladder's foot, swaying in a slow wind. */
-export function createGrass(count: number): THREE.Mesh {
-  const blade = new THREE.BufferGeometry();
-  // a thin tapered blade: 5 vertices, 3 triangles
-  blade.setAttribute('position', new THREE.Float32BufferAttribute([-0.008, 0, 0, 0.008, 0, 0, -0.005, 0.5, 0, 0.005, 0.5, 0, 0, 1, 0], 3));
-  blade.setIndex([0, 1, 2, 2, 1, 3, 2, 3, 4]);
-  const geo = new THREE.InstancedBufferGeometry();
-  geo.index = blade.index;
-  geo.setAttribute('position', blade.getAttribute('position'));
-  const off = new Float32Array(count * 4), tint = new Float32Array(count);
-  for (let i = 0; i < count; i++) {
-    // denser near the foot of the ladder, thinning out into the meadow; clear inside the trunk
-    const r = 0.55 + Math.pow(Math.random(), 1.6) * 9;
-    const a = Math.random() * Math.PI * 2;
-    off.set([Math.cos(a) * r, Math.sin(a) * r, Math.random() * Math.PI * 2, 0.07 + Math.random() * 0.13], i * 4);
-    tint[i] = Math.random();
-  }
-  geo.setAttribute('offset', new THREE.InstancedBufferAttribute(off, 4));
-  geo.setAttribute('tint', new THREE.InstancedBufferAttribute(tint, 1));
-  geo.instanceCount = count;
+/**
+ * The ground: where the blades end it carries on as a field of the same colours and noise (fresh green, dry gold
+ * patches, the sheen of the gusts rolling over it); under the blades it is the dark thatch of the sward; at the foot of
+ * the trunk, bare earth with leaf litter, darkened where it meets the trunk, the roots, the stones and the posts. It
+ * takes the trunk's and the crown's long shadows from the evening light.
+ */
+export function createGround(lq = false): THREE.Mesh {
+  const roots = ROOTS.map((r) => new THREE.Vector4(Math.sin((r.a * Math.PI) / 180), Math.cos((r.a * Math.PI) / 180), 0.85 + r.len, r.w));
   const mat = new THREE.ShaderMaterial({
-    side: THREE.DoubleSide,
     fog: true,
-    uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { uTime: { value: 0 }, uWind: { value: 1 } }]),
+    defines: lq ? { LQ: 1 } : {},
+    uniforms: { ...THREE.UniformsUtils.clone(THREE.UniformsLib.fog), ...NATURE, uRoots: { value: roots } },
     vertexShader: /* glsl */ `
-      attribute vec4 offset; attribute float tint; uniform float uTime; uniform float uWind;
-      varying float vH; varying float vT;
+      varying vec3 vW;
       #include <fog_pars_vertex>
       void main(){
-        float h = offset.w; float rot = offset.z;
-        vec3 p = position; p.y *= h;
-        float c = cos(rot), s = sin(rot);
-        p = vec3(p.x*c - p.z*s, p.y, p.x*s + p.z*c);
-        float bend = position.y * position.y * uWind * (0.035 + 0.02*sin(uTime*1.1 + offset.x*1.7 + offset.y*1.3));
-        p.x += bend; p.z += bend * 0.4;
-        vec3 w = vec3(offset.x, ${TABLE_Y.toFixed(3)}, offset.y) + p;
-        vec4 mvPosition = modelViewMatrix * vec4(w, 1.);
+        vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz;
+        vec4 mvPosition = viewMatrix * w;
         gl_Position = projectionMatrix * mvPosition;
-        vH = position.y; vT = tint;
         #include <fog_vertex>
       }`,
     fragmentShader: /* glsl */ `
-      varying float vH; varying float vT;
+      ${NATURE_GLSL}
+      uniform vec4 uRoots[8];
+      varying vec3 vW;
       #include <fog_pars_fragment>
+      float segD(vec2 p, vec2 a, vec2 b){ vec2 pa = p - a, ba = b - a; float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0); return length(pa - ba * h); }
       void main(){
-        vec3 base = mix(vec3(0.07,0.15,0.05), vec3(0.16,0.28,0.09), vT);
-        vec3 tip = mix(vec3(0.42,0.52,0.2), vec3(0.75,0.62,0.32), vT*0.6);
-        gl_FragColor = vec4(mix(base, tip, vH*vH), 1.);
+        vec2 xz = vW.xz;
+        float r = length(xz);
+        float camD = distance(vW, cameraPosition);
+        float dry = meadowDry(xz);
+        // the field: blades seen from above and afar, in streaks that lean with the wind
+        vec2 sq = vec2(dot(xz, vec2(0.82, 0.57)), dot(xz, vec2(-0.57, 0.82)));
+        float n1 = vnoise(sq * vec2(5.0, 15.0));
+        float n2 = vnoise(xz * 41.0);
+        #ifndef LQ
+          n1 = n1 * 0.7 + vnoise(sq * vec2(13.0, 38.0)) * 0.3;
+        #endif
+        float tuft = vnoise(xz * 2.3) * 0.6 + vnoise(xz * 7.1) * 0.4;
+        vec3 field = mix(bladeMid(dry), bladeTip(dry), 0.18 + 0.35 * n1) * (0.62 + 0.3 * n2 + 0.25 * tuft);
+        // close by, the field is a tangle of blade tops over dark gaps
+        float fine = smoothstep(0.004, 0.0, length(fwidth(xz)) * 0.03) ;
+        float strands = 0.0;
+        #ifndef LQ
+          vec2 sq2 = vec2(dot(xz, vec2(0.6, 0.8)), dot(xz, vec2(-0.8, 0.6)));
+          strands = smoothstep(0.55, 0.85, vnoise(sq * vec2(28.0, 90.0))) * 0.6 + smoothstep(0.55, 0.85, vnoise(sq2 * vec2(25.0, 80.0) + 3.0)) * 0.6;
+        #endif
+        float gap = smoothstep(0.35, 0.75, vnoise(xz * 60.0));
+        field *= mix(1.0, mix(0.45, 1.0, gap) + strands * 0.7, (1.0 - smoothstep(1.0, 12.0, camD)) * 0.9);
+        // underneath the sward close by: dark thatch
+        vec3 thatch = mix(vec3(0.022, 0.03, 0.01), vec3(0.06, 0.055, 0.024), n2 * 0.7 + dry * 0.3);
+        float open = smoothstep(1.5, 9.0, camD) * mix(0.65, 1.0, smoothstep(2.6, 4.6, r));
+        vec3 col = mix(thatch, field, mix(0.45, 0.95, open));
+        // bare earth and leaf litter at the foot of the trunk, along the roots
+        float ang = atan(xz.x, xz.y);
+        float soilR = 0.92 + 0.22 * vnoise(vec2(ang * 2.2, 3.0)) + 0.12 * vnoise(xz * 3.0);
+        float soil = 1.0 - smoothstep(soilR - 0.28, soilR + 0.08, r);
+        float rootD = 9.0;
+        for (int i = 0; i < 8; i++) {
+          vec4 R = uRoots[i];
+          float d = segD(xz, R.xy * 0.4, R.xy * R.z) / mix(1.0, 0.25, clamp((length(xz) - 0.4) / R.z, 0.0, 1.0));
+          rootD = min(rootD, d / R.w);
+        }
+        soil = max(soil, (1.0 - smoothstep(0.06, 0.2, rootD)) * (1.0 - smoothstep(1.4, 2.0, r)));
+        vec3 earth = mix(vec3(0.03, 0.019, 0.011), vec3(0.075, 0.05, 0.03), n2);
+        float litter = smoothstep(0.62, 0.8, vnoise(xz * 23.0)) * (0.6 + 0.4 * vnoise(xz * 5.0));
+        earth = mix(earth, mix(vec3(0.14, 0.075, 0.03), vec3(0.2, 0.15, 0.06), n2), litter * 0.75);
+        earth = mix(earth, vec3(0.03, 0.05, 0.012), smoothstep(0.55, 0.8, vnoise(xz * 9.0 + 4.0)) * 0.6); // moss
+        col = mix(col, earth, soil);
+        // light
+        float sh = keyShadow(vW);
+        float ao = contactAO(vW) * mix(0.55, 1.0, smoothstep(0.03, 0.22, rootD));
+        vec3 N = vec3(0.0, 1.0, 0.0);
+        vec3 S; float fall; vec3 sc = sunLight(vW, N, S, fall);
+        float sunVis = smoothstep(1.4, 3.0, r);
+        // lit like the blades it stands for: from the light's side we see their lit faces, against it their shaded
+        // backs with the light shining through
+        vec3 V = normalize(cameraPosition - vW);
+        float facing = 0.5 + 0.5 * dot(normalize(V.xz + vec2(1e-4)), normalize(KEY_DIR.xz));
+        float bladeK = 0.16 + 0.5 * facing + 0.3 * pow(1.0 - facing, 3.0);
+        float keyK = mix(bladeK, KEY_DIR.y, soil);
+        vec3 light = ambient(vec3(0.0, mix(0.35, 1.0, soil), 0.9)) * ao + FILL_COL * 0.5 * ao + KEY_COL * keyK * sh * (0.75 + 0.25 * ao) + sc * S.y * 1.6 * sunVis;
+        col *= light;
+        // the gusts: blades bowing over show their lighter, drier sides
+        float g = gust(xz, uTime) * uWind;
+        col *= 1.0 + 0.35 * g * smoothstep(1.5, 5.0, camD) * (1.0 - soil);
+        gl_FragColor = vec4(col, 1.0);
         #include <fog_fragment>
       }`,
   });
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.frustumCulled = false;
-  mesh.name = 'grass';
-  return mesh;
+  const ground = new THREE.Mesh(new THREE.CircleGeometry(150, 96).rotateX(-Math.PI / 2), mat);
+  ground.position.y = TABLE_Y;
+  ground.name = 'ground';
+  ground.renderOrder = -5;
+  return ground;
 }
 
-/** The stones of the place, around the foot of the ladder. */
+// ───────────────────────────── the stones of the place ─────────────────────────────
+interface StoneSpec { x: number; z: number; s: number; sx: number; sy: number; rot: [number, number, number]; seed: number }
+/** where the stones lie (also used by the meadow, which grows around them and darkens against them) */
+export const STONES: StoneSpec[] = (() => {
+  const rnd = seeded(7);
+  const out: StoneSpec[] = [];
+  for (let i = 0; i < 12; i++) {
+    const s = 0.06 + rnd() * 0.13;
+    const sx = 1 + rnd() * 0.6;
+    const a = (i / 12) * Math.PI * 2 + rnd() * 0.4, r = 1.55 + rnd() * 0.6;
+    out.push({ x: Math.cos(a) * r, z: Math.sin(a) * r, s, sx, sy: 0.62 + rnd() * 0.25, rot: [(rnd() - 0.5) * 0.3, rnd() * 6, (rnd() - 0.5) * 0.3], seed: rnd() * 100 });
+  }
+  return out;
+})();
+NATURE.uStones.value.forEach((v, i) => { const st = STONES[i]; v.set(st.x, 0, st.z, st.s * (1 + (st.sx - 1) * 0.5) * 1.05); });
+
+function noise3(): (x: number, y: number, z: number) => number {
+  const h = (x: number, y: number, z: number) => { const s = Math.sin(x * 127.1 + y * 311.7 + z * 74.7) * 43758.5453; return s - Math.floor(s); };
+  const sm = (t: number) => t * t * (3 - 2 * t);
+  return (x, y, z) => {
+    const ix = Math.floor(x), iy = Math.floor(y), iz = Math.floor(z);
+    const fx = sm(x - ix), fy = sm(y - iy), fz = sm(z - iz);
+    const l = (a: number, b: number, t: number) => a + (b - a) * t;
+    return l(
+      l(l(h(ix, iy, iz), h(ix + 1, iy, iz), fx), l(h(ix, iy + 1, iz), h(ix + 1, iy + 1, iz), fx), fy),
+      l(l(h(ix, iy, iz + 1), h(ix + 1, iy, iz + 1), fx), l(h(ix, iy + 1, iz + 1), h(ix + 1, iy + 1, iz + 1), fx), fy), fz);
+  };
+}
+
+/** The stones of the place: weathered, half sunk in the earth, with lichen and moss on their tops. */
 export function createStones(): THREE.Group {
   const g = new THREE.Group();
-  const mat = new THREE.MeshStandardMaterial({ color: '#8d877a', roughness: 0.92, metalness: 0, flatShading: true });
-  let seed = 7;
-  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-  for (let i = 0; i < 12; i++) {
-    const geo = new THREE.IcosahedronGeometry(1, 1);
+  const n3 = noise3();
+  const fbm = (x: number, y: number, z: number) => n3(x, y, z) * 0.55 + n3(x * 2.1, y * 2.1, z * 2.1) * 0.3 + n3(x * 4.3, y * 4.3, z * 4.3) * 0.15;
+  const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.93, metalness: 0, envMapIntensity: 0.22 });
+  for (const st of STONES) {
+    const geo = new THREE.IcosahedronGeometry(1, 4);
     const pos = geo.getAttribute('position') as THREE.BufferAttribute;
-    for (let k = 0; k < pos.count; k++) pos.setXYZ(k, pos.getX(k) * (0.8 + rnd() * 0.4), pos.getY(k) * (0.8 + rnd() * 0.4), pos.getZ(k) * (0.8 + rnd() * 0.4));
+    const v = new THREE.Vector3();
+    for (let k = 0; k < pos.count; k++) {
+      v.fromBufferAttribute(pos, k);
+      const o = st.seed;
+      let r = 1 + 0.32 * (fbm(v.x * 1.3 + o, v.y * 1.3, v.z * 1.3) - 0.5) + 0.06 * (n3(v.x * 7 + o, v.y * 7, v.z * 7) - 0.5);
+      // a few flat faces, as broken stone has
+      const facet = Math.max(Math.abs(v.x * 0.9 + v.y * 0.3), Math.abs(v.z * 0.85 - v.y * 0.4));
+      r = Math.min(r, 1.02 / Math.max(0.6, facet + 0.25));
+      v.multiplyScalar(r);
+      if (v.y < -0.35) v.y = -0.35 + (v.y + 0.35) * 0.3; // the buried underside is flat
+      pos.setXYZ(k, v.x, v.y, v.z);
+    }
     geo.computeVertexNormals();
-    const s = 0.06 + rnd() * 0.13;
+    const nor = geo.getAttribute('normal') as THREE.BufferAttribute;
+    const col = new Float32Array(pos.count * 3);
+    const c = new THREE.Color(), n = new THREE.Vector3();
+    const tone = n3(st.seed, 1, 2);
+    for (let k = 0; k < pos.count; k++) {
+      v.fromBufferAttribute(pos, k);
+      n.fromBufferAttribute(nor, k);
+      const o = st.seed + 5;
+      const grain = n3(v.x * 9 + o, v.y * 9, v.z * 9);
+      c.setRGB(0.24 + 0.07 * tone, 0.2 + 0.05 * tone, 0.155).multiplyScalar(0.7 + 0.5 * grain);
+      // lichen: pale rosettes, a few rust-orange
+      const li = THREE.MathUtils.smoothstep(n3(v.x * 5 + o, v.y * 5, v.z * 5) * 0.7 + n3(v.x * 15, v.y * 15 + o, v.z * 15) * 0.3, 0.6, 0.75);
+      c.lerp(n3(v.x * 2, v.y * 2, v.z * 2 + o) > 0.6 ? new THREE.Color(0.42, 0.2, 0.06) : new THREE.Color(0.42, 0.43, 0.33), li * 0.65);
+      // moss on the top, where rain and seeds settle
+      const moss = THREE.MathUtils.smoothstep(n.y + (n3(v.x * 3, v.y * 3 + o, v.z * 3) - 0.5) * 0.9, 0.45, 0.9);
+      c.lerp(new THREE.Color(0.05, 0.085, 0.02), moss * 0.85);
+      // darker where it sinks into the earth
+      c.multiplyScalar(THREE.MathUtils.lerp(0.35, 1, THREE.MathUtils.smoothstep(v.y, -0.4, 0.15)));
+      col.set([c.r, c.g, c.b], k * 3);
+    }
+    geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
     const m = new THREE.Mesh(geo, mat);
-    const a = (i / 12) * Math.PI * 2 + rnd() * 0.4, r = 1.55 + rnd() * 0.6;
-    m.position.set(Math.cos(a) * r, TABLE_Y + s * 0.35, Math.sin(a) * r);
-    m.scale.set(s * (1 + rnd() * 0.6), s * 0.7, s);
-    m.rotation.set(rnd(), rnd() * 6, rnd());
+    m.position.set(st.x, TABLE_Y + st.s * 0.12, st.z);
+    m.scale.set(st.s * st.sx, st.s * st.sy, st.s);
+    m.rotation.set(...st.rot);
     m.castShadow = m.receiveShadow = true;
     g.add(m);
   }
@@ -178,409 +270,364 @@ export function createStones(): THREE.Group {
   return g;
 }
 
-/** Tubes whose radius tapers along their curves, merged into one geometry; uv.y runs along the bark in world units. */
-function branchGeometry(list: { curve: THREE.Curve<THREE.Vector3>; segs: number; radial: number; r0: number; r1: number; flare?: number }[]): THREE.BufferGeometry {
-  const pos: number[] = [], nor: number[] = [], uv: number[] = [], idx: number[] = [];
-  for (const b of list) {
-    const frames = b.curve.computeFrenetFrames(b.segs, false);
-    const len = b.curve.getLength();
-    const v0 = pos.length / 3;
-    for (let i = 0; i <= b.segs; i++) {
-      const t = i / b.segs;
-      const p = b.curve.getPointAt(t);
-      // taper, and a swelling where a limb leaves the trunk
-      const r = THREE.MathUtils.lerp(b.r0, b.r1, Math.pow(t, 0.75)) * (1 + (b.flare ?? 0) * Math.pow(1 - t, 4));
-      for (let j = 0; j <= b.radial; j++) {
-        const v = (j / b.radial) * Math.PI * 2;
-        const n = frames.normals[i].clone().multiplyScalar(Math.cos(v)).addScaledVector(frames.binormals[i], Math.sin(v));
-        pos.push(p.x + n.x * r, p.y + n.y * r, p.z + n.z * r);
-        nor.push(n.x, n.y, n.z);
-        uv.push(j / b.radial, t * len * 1.3);
-      }
-    }
-    for (let i = 0; i < b.segs; i++) for (let j = 0; j < b.radial; j++) {
-      const a = v0 + i * (b.radial + 1) + j, c = a + b.radial + 1;
-      idx.push(a, c, a + 1, c, c + 1, a + 1);
-    }
-  }
+// ───────────────────────────── the meadow ─────────────────────────────
+/** a blade: `segs` pairs of vertices up its length (x = side, y = t) and a tip */
+function bladeGeometry(segs: number): THREE.BufferGeometry {
+  const pos: number[] = [], idx: number[] = [];
+  for (let i = 0; i < segs; i++) { const t = Math.pow(i / segs, 0.85); pos.push(-1, t, 0, 1, t, 0); }
+  pos.push(0, 1, 0);
+  for (let i = 0; i < segs - 1; i++) { const a = i * 2; idx.push(a, a + 1, a + 2, a + 2, a + 1, a + 3); }
+  const a = (segs - 1) * 2;
+  idx.push(a, a + 1, segs * 2);
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
-  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
   g.setIndex(idx);
   return g;
 }
 
-/** Bark, lit warm by the sun at the head of the ladder: the sides of the limbs that face it, and a glowing rim where they stand against it. */
-function barkMaterial(sun: THREE.Vector3): THREE.MeshStandardMaterial {
-  const [c, x] = canvas(256, 512);
-  x.fillStyle = '#6e5640';
-  x.fillRect(0, 0, 256, 512);
-  for (let i = 0; i < 900; i++) {
-    const px = Math.random() * 256;
-    x.strokeStyle = `rgba(${20 + Math.random() * 40},${14 + Math.random() * 26},${8 + Math.random() * 14},${0.3 + Math.random() * 0.5})`;
-    x.lineWidth = 1 + Math.random() * 3;
-    x.beginPath();
-    x.moveTo(px, Math.random() * 512);
-    x.lineTo(px + (Math.random() - 0.5) * 8, Math.random() * 512);
-    x.stroke();
-  }
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(2, 1);
-  const mat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.95, metalness: 0, color: '#c9b9a2' });
-  mat.onBeforeCompile = (sh) => {
-    sh.uniforms.uSun = { value: sun };
-    sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\nvarying vec3 vBarkW; varying vec3 vBarkN;')
-      .replace('#include <fog_vertex>', '#include <fog_vertex>\nvBarkW = (modelMatrix * vec4(transformed, 1.0)).xyz; vBarkN = normalize(mat3(modelMatrix) * objectNormal);');
-    sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', '#include <common>\nuniform vec3 uSun; varying vec3 vBarkW; varying vec3 vBarkN;')
-      .replace('#include <emissivemap_fragment>', /* glsl */ `#include <emissivemap_fragment>
-        {
-          vec3 bn = normalize(vBarkN); vec3 bv = normalize(cameraPosition - vBarkW);
-          vec3 bl = uSun - vBarkW; float bd = length(bl); bl /= bd;
-          float fall = 1.0 / (1.0 + bd * bd * 0.55);
-          float face = max(dot(bn, bl), 0.0);
-          float rim = pow(1.0 - max(dot(bn, bv), 0.0), 2.5) * pow(max(dot(-bv, bl), 0.0), 2.0);
-          totalEmissiveRadiance += (diffuseColor.rgb * vec3(1.0, 0.7, 0.4) * face * 2.2 + vec3(1.0, 0.66, 0.32) * rim * 0.9) * fall;
-        }`);
-  };
-  return mat;
-}
-
-/** Sprigs of leaves for the crown: four variants in a 2×2 atlas. r: light across each leaf, g: which leaf (a hue jitter), a: shape. */
-function sprigAtlas(): THREE.CanvasTexture {
-  const S = 256;
-  const [c, x] = canvas(S * 2, S * 2);
-  let seed = 3;
-  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-  const leaf = (px: number, py: number, ang: number, L: number) => {
-    const W = L * (0.36 + rnd() * 0.1), g = Math.floor(rnd() * 255);
-    x.save();
-    x.translate(px, py);
-    x.rotate(ang);
-    x.beginPath();
-    x.moveTo(0, 0);
-    x.bezierCurveTo(W * 0.95, -L * 0.18, W * 0.75, -L * 0.72, 0, -L);
-    x.bezierCurveTo(-W * 0.75, -L * 0.72, -W * 0.95, -L * 0.18, 0, 0);
-    x.save();
-    x.clip();
-    // two halves of the leaf folded along the midrib: one catches the light
-    x.fillStyle = `rgb(228,${g},0)`;
-    x.fillRect(-W, -L, W, L);
-    x.fillStyle = `rgb(182,${g},0)`;
-    x.fillRect(0, -L, W, L);
-    x.strokeStyle = `rgb(120,${g},0)`;
-    x.lineWidth = 2.2;
-    x.beginPath();
-    x.moveTo(0, 0);
-    x.lineTo(0, -L * 0.96);
-    x.stroke();
-    x.lineWidth = 1;
-    for (let k = 1; k < 6; k++) {
-      const y = -L * (0.12 + k * 0.13);
-      x.beginPath();
-      x.moveTo(0, y);
-      x.lineTo(-W * 0.8, y - L * 0.12);
-      x.moveTo(0, y);
-      x.lineTo(W * 0.8, y - L * 0.12);
-      x.stroke();
+/** is a point of ground taken by the trunk's foot, a root or a stone? */
+function blocked(x: number, z: number, pad = 0): boolean {
+  const r = Math.hypot(x, z);
+  if (r < 0.66 + pad) return true;
+  const a = Math.atan2(x, z);
+  for (const R of ROOTS) {
+    const ra = (R.a * Math.PI) / 180;
+    const along = x * Math.sin(ra) + z * Math.cos(ra), across = Math.abs(-x * Math.cos(ra) + z * Math.sin(ra));
+    const end = 0.85 + R.len;
+    if (along > 0.3 && along < end) {
+      const w = THREE.MathUtils.lerp(0.11, 0.02, (along - 0.3) / (end - 0.3)) * R.w;
+      if (across < w + pad) return true;
     }
-    x.restore();
-    x.restore();
-  };
-  for (let v = 0; v < 4; v++) {
-    x.save();
-    x.translate((v % 2) * S + S / 2, Math.floor(v / 2) * S + S - 8); // the base of the stem at the bottom of the cell
-    const bend = (rnd() - 0.5) * 0.5;
-    const n = 5 + (v % 2) * 2;
-    const tip = new THREE.Vector2(bend * 60, -S * 0.62);
-    const at = (t: number) => new THREE.Vector2(tip.x * t * t, tip.y * t);
-    x.strokeStyle = 'rgb(80,0,0)';
-    x.lineWidth = 4;
-    x.beginPath();
-    x.moveTo(0, 0);
-    x.quadraticCurveTo(0, tip.y * 0.5, tip.x, tip.y);
-    x.stroke();
-    for (let k = 0; k < n - 1; k++) {
-      const t = 0.2 + (k / (n - 1)) * 0.75;
-      const p = at(t), side = k % 2 ? 1 : -1;
-      leaf(p.x, p.y, side * (0.95 - t * 0.45) + bend * t, S * (0.27 + 0.1 * Math.sin(Math.PI * t)) * (0.85 + rnd() * 0.3));
-    }
-    leaf(tip.x, tip.y, bend * 0.8, S * 0.34);
-    x.restore();
+    if (r < 1.0 && Math.abs(Math.atan2(Math.sin(a - ra), Math.cos(a - ra))) < 0.22) return true;
   }
-  const tex = new THREE.CanvasTexture(c);
-  tex.anisotropy = 4;
-  return tex;
+  for (const s of STONES) if (Math.hypot(x - s.x, z - s.z) < s.s * (1 + (s.sx - 1) * 0.5) * 0.95 + pad) return true;
+  return false;
 }
 
-export interface TreeOpts {
-  trunkR: number;
-  bottom: number;
-  top: number;
-  /** the sun at the head of the ladder */
-  sun: THREE.Vector3;
-  /** the crown keeps above this height, clear of the ladder */
-  clearY: number;
-  leaves: number;
-  /** motes of light and falling leaves in the crown */
-  sparks: number;
-}
-
-export interface Tree {
-  group: THREE.Group;
-  /** height of the top of the crown and its horizontal radius, for framing */
-  maxY: number;
-  radius: number;
-  /** wind and light: t is the (motion-respecting) time, wind 0 (still) … 1 */
-  update(t: number, wind: number): void;
-  /** drawing-buffer height in px, for sizing the points */
-  setPixelHeight(h: number): void;
-  dispose(): void;
-}
+interface Layer { count: number; segs: number; tile: number; inner: number }
 
 /**
- * Roots running from the trunk into the grass; above the ladder's head the trunk divides into great limbs that branch
- * four times and spread into a wide crown of leaves, open in the middle where the sun stands. The leaves glow where
- * the sun shines through them and move in the wind; motes of light rise in the crown and a few leaves drift down.
+ * Blades for one layer. The fixed layer grows around the tree, densest at the ladder's foot; the ring layers fill a
+ * square tile that the shader wraps around the camera, so wherever it goes the grass under it is dense and thins with
+ * distance (and blades in the distance grow wider, so the field stays full).
  */
-export function createTree(o: TreeOpts): Tree {
+function bladeInstances(L: Layer, rnd: () => number): { a: Float32Array; b: Float32Array; n: number } {
+  const a = new Float32Array(L.count * 4), b = new Float32Array(L.count * 4);
+  let n = 0;
+  while (n < L.count) {
+    let cx: number, cz: number;
+    if (L.tile === 0) {
+      // around the tree: uniform in area out to 4.7, a little sparser past 2.4
+      let tries = 0;
+      do {
+        const r = Math.sqrt(0.6 * 0.6 + rnd() * (4.7 * 4.7 - 0.6 * 0.6)), ang = rnd() * Math.PI * 2;
+        cx = Math.sin(ang) * r; cz = Math.cos(ang) * r;
+        const keep = 1 - 0.45 * THREE.MathUtils.smoothstep(r, 2.4, 4.7);
+        if (rnd() < keep && !blocked(cx, cz, 0.02)) break;
+      } while (++tries < 50);
+    } else { cx = rnd() * L.tile; cz = rnd() * L.tile; }
+    // a clump: blades of one kind leaning together
+    const size = 5 + Math.floor(rnd() * 14), spread = 0.025 + rnd() * 0.07;
+    const hs = 0.7 + rnd() * 0.65, lean = rnd() * Math.PI * 2, curl = 0.15 + rnd() * 0.55, tint = rnd();
+    for (let k = 0; k < size && n < L.count; k++) {
+      const ang = rnd() * Math.PI * 2, d = spread * Math.sqrt(-2 * Math.log(Math.max(1e-4, rnd()))) * 0.6;
+      const x = cx + Math.cos(ang) * d, z = cz + Math.sin(ang) * d;
+      const r = Math.hypot(x, z);
+      if (L.tile === 0 && (blocked(x, z) || r > 4.7)) continue;
+      let h = (0.075 + rnd() * 0.12) * hs;
+      if (L.tile === 0 && r < 1.5) h = Math.min(h, 0.15);
+      else if (rnd() < 0.035) h *= 1.6;
+      const face = lean + (rnd() - 0.5) * 1.6;
+      a.set([x, z, face, h], n * 4);
+      b.set([0.011 + rnd() * 0.01, curl * (0.6 + rnd() * 0.8), THREE.MathUtils.clamp(tint * 0.6 + rnd() * 0.4, 0, 1), rnd()], n * 4);
+      n++;
+    }
+  }
+  return { a, b, n };
+}
+
+const BLADE_VERT = /* glsl */ `
+  attribute vec4 aBlade; attribute vec4 aLook;
+  uniform vec4 uLayer;   // tile size (0: fixed around the tree), inner half-size, blades per unit², far distance
+  uniform vec3 uLod;     // blades per unit² wanted next to the camera, distance and power of its falloff
+  varying vec3 vCol; varying float vSide;
+  #include <fog_pars_vertex>
+  void main(){
+    vec2 xz = aBlade.xy;
+    float seed = aLook.w;
+    float h = aBlade.w;
+    float keep = 1.0;
+    if (uLayer.x > 0.0) {
+      vec2 rel = mod(xz - cameraPosition.xz + 0.5 * uLayer.x, uLayer.x) - 0.5 * uLayer.x;
+      xz = cameraPosition.xz + rel;
+      if (max(abs(rel.x), abs(rel.y)) < uLayer.y) keep = 0.0;
+      if (length(xz) < 3.3 + 1.4 * fract(seed * 7.31)) keep = 0.0;   // the meadow around the tree is grown by the fixed layer
+      for (int i = 0; i < 12; i++) if (length(xz - uStones[i].xz) < uStones[i].w) keep = 0.0;
+    } else if (length(xz) > 3.3 + 1.4 * fract(seed * 5.77)) keep = 0.0;
+    vec3 root = vec3(xz.x, GROUND_Y - 0.008, xz.y);
+    float camD = distance(root, cameraPosition);
+    if (uLayer.x > 0.0) {
+      float want = uLod.x / (1.0 + pow(camD / uLod.y, uLod.z));
+      if (fract(seed * 13.37) > want / uLayer.z) keep = 0.0;
+    }
+    h *= 1.0 - smoothstep(uLayer.w * 0.8, uLayer.w, camD);
+    if (keep < 0.5 || h < 0.003) { gl_Position = vec4(0.0, 0.0, 2.0, 1.0); vCol = vec3(0.0); vSide = 0.0; return; }
+
+    float t = position.y, side = position.x;
+    float w = aLook.x * clamp(camD / 5.0, 1.0, 2.2);
+    // the blade is an arc of constant length h, bent by its own lean and by the wind
+    vec2 fdir = vec2(cos(aBlade.z), sin(aBlade.z));
+    vec2 wv = windAt(xz, uTime, seed) * (0.75 + 0.5 * fract(seed * 3.7)) * (0.55 + 3.0 * h);
+    vec2 bend = fdir * aLook.y + wv;
+    float beta = length(bend) + 1e-4;
+    vec2 bdir = bend / beta;
+    beta = min(beta, 1.5);
+    float ang = beta * t;
+    float fwd = h * (1.0 - cos(ang)) / beta, up = h * sin(ang) / beta;
+    vec3 tang = vec3(bdir.x * sin(ang), cos(ang), bdir.y * sin(ang));
+    vec3 across = normalize(vec3(-fdir.y, 0.0, fdir.x));
+    float wt = w * (1.0 - pow(t, 1.5)) * (0.85 + 0.15 * t);
+    vec3 wp = root + vec3(bdir.x * fwd, up, bdir.y * fwd) + across * side * wt * 0.5;
+    vec3 N = normalize(cross(across, tang) + across * side * 0.45);
+
+    // colour: dark at the foot of the sward, fresh green up the blade, dry gold at the tips of the dry patches
+    float dry = clamp(meadowDry(xz) + (aLook.z - 0.5) * 0.6, 0.0, 1.0);
+    vec3 c = mix(vec3(0.035, 0.05, 0.016), bladeMid(dry), smoothstep(0.0, 0.5, t));
+    c = mix(c, bladeTip(dry), smoothstep(0.4, 1.0, t) * (0.45 + 0.55 * dry));
+
+    // light, per vertex
+    vec3 V = normalize(cameraPosition - wp);
+    if (dot(N, V) < 0.0) N = -N;
+    // from afar we see the tops of the sward, not into it: the dark feet and the glinting tips even out
+    float farK = smoothstep(5.0, 14.0, camD);
+    float cao = contactAO(wp);
+    float ao = mix(mix(0.3, 0.7, farK), 1.0, smoothstep(0.0, 0.75, t)) * cao;
+    float sh = keyShadow(wp);
+    float NL = dot(N, KEY_DIR);
+    float back = pow(max(dot(-V, KEY_DIR), 0.0), 5.0);
+    vec3 trans = vec3(0.95, 1.1, 0.42) * (max(-NL, 0.0) * 0.45 + back * 0.9) * smoothstep(0.1, 0.8, t) * (1.0 - 0.55 * farK);  // the low light shining through the blades
+    vec3 light = ambient(N) * ao + FILL_COL * max(dot(N, FILL_DIR), 0.0) * ao;
+    light += KEY_COL * (max(NL, 0.0) * 0.75 + 0.2 + trans) * sh * mix(0.35, 1.0, t);
+    vec3 S; float fall; vec3 sc = sunLight(wp, N, S, fall);
+    float sunVis = smoothstep(1.5, 3.0, length(wp.xz));
+    light += sc * (max(dot(N, S), 0.0) * 0.9 + pow(max(dot(-V, S), 0.0), 6.0) * 0.9 * t) * sunVis * mix(0.4, 1.0, t);
+    vec3 H = normalize(KEY_DIR + V);
+    vCol = c * light + KEY_COL * pow(max(dot(N, H), 0.0), 24.0) * 0.05 * sh * t;
+    // far off, a blade takes the colour the field has there (the ground carries on with the same model)
+    float facing = 0.5 + 0.5 * dot(normalize(V.xz + vec2(1e-4)), normalize(KEY_DIR.xz));
+    vec3 fieldL = ambient(vec3(0.0, 0.35, 0.9)) * cao + FILL_COL * 0.5 + KEY_COL * (0.16 + 0.5 * facing + 0.3 * pow(1.0 - facing, 3.0)) * sh;
+    vec3 fieldC = mix(bladeMid(dry), bladeTip(dry), 0.2 + 0.5 * t) * (0.7 + 0.5 * t) * fieldL;
+    vCol = mix(vCol, fieldC, smoothstep(6.0, 16.0, camD) * 0.75);
+    vSide = side;
+    vec4 mvPosition = viewMatrix * vec4(wp, 1.0);
+    gl_Position = projectionMatrix * mvPosition;
+    #include <fog_vertex>
+  }`;
+
+const BLADE_FRAG = /* glsl */ `
+  varying vec3 vCol; varying float vSide;
+  #include <fog_pars_fragment>
+  void main(){
+    gl_FragColor = vec4(vCol * (1.0 - 0.22 * vSide * vSide), 1.0);
+    #include <fog_fragment>
+  }`;
+
+export interface MeadowOpts { grass: [number, number, number, number]; segs: [number, number, number, number]; flowers: number }
+export interface Meadow { group: THREE.Group; dispose(): void }
+
+/** The meadow: grass in four layers (around the tree, and near / mid / far around the camera) and the wildflowers. */
+export function createMeadow(o: MeadowOpts): Meadow {
   const group = new THREE.Group();
-  group.name = 'tree';
-  const bark = barkMaterial(o.sun);
-  let seed = 11;
-  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-
-  // roots
-  const roots: Parameters<typeof branchGeometry>[0] = [];
-  for (let i = 0; i < 9; i++) {
-    const a = (i / 9) * Math.PI * 2 + rnd() * 0.3;
-    const dir = new THREE.Vector3(Math.cos(a), 0, Math.sin(a));
-    const len = 0.5 + rnd() * 0.5;
-    const curve = new THREE.CatmullRomCurve3([
-      dir.clone().multiplyScalar(o.trunkR * 0.85).setY(o.bottom + 0.35),
-      dir.clone().multiplyScalar(o.trunkR + len * 0.35).setY(TABLE_Y + 0.06),
-      dir.clone().multiplyScalar(o.trunkR + len).setY(TABLE_Y - 0.01),
-    ]);
-    roots.push({ curve, segs: 16, radial: 8, r0: 0.11, r1: 0.015 });
+  group.name = 'grass';
+  const rnd = seeded(97);
+  const [nP, n0, n1, n2] = o.grass;
+  // density next to the camera falls off so that it meets each ring's own density at the ring's inner edge
+  const T = [3.6, 9, 22];
+  const rho0 = n0 / (T[0] * T[0]), rho1 = n1 / (T[1] * T[1]), rho2 = n2 / (T[2] * T[2]);
+  // wanted density at distance d from the camera: rho0 / (1 + (d / D0)^P), meeting ring 1 at its inner edge (and ring 2 at its)
+  const A = Math.max(0.5, rho0 / Math.max(rho1, 1e-3) - 1);
+  const P = n2 > 0 ? THREE.MathUtils.clamp(Math.log((rho0 / rho2 - 1) / A) / Math.log(T[1] / T[0]), 1.5, 4) : 2.4;
+  const D0 = T[0] / 2 / Math.pow(A, 1 / P);
+  const far = n2 > 0 ? 10.5 : n1 > 0 ? 4.4 : 1.8;
+  const layers: (Layer & { rho: number })[] = [
+    { count: nP, segs: o.segs[0], tile: 0, inner: 0, rho: 1 },
+    { count: n0, segs: o.segs[1], tile: T[0], inner: 0, rho: rho0 },
+    { count: n1, segs: o.segs[2], tile: T[1], inner: T[0] / 2, rho: n1 / (T[1] * T[1]) },
+    { count: n2, segs: o.segs[3], tile: T[2], inner: T[1] / 2, rho: n2 / (T[2] * T[2]) },
+  ];
+  for (const L of layers) {
+    if (L.count <= 0) continue;
+    const inst = bladeInstances(L, rnd);
+    const geo = new THREE.InstancedBufferGeometry();
+    const blade = bladeGeometry(L.segs);
+    geo.index = blade.index;
+    geo.setAttribute('position', blade.getAttribute('position'));
+    geo.setAttribute('aBlade', new THREE.InstancedBufferAttribute(inst.a, 4));
+    geo.setAttribute('aLook', new THREE.InstancedBufferAttribute(inst.b, 4));
+    geo.instanceCount = inst.n;
+    const mat = new THREE.ShaderMaterial({
+      side: THREE.DoubleSide,
+      fog: true,
+      uniforms: {
+        ...THREE.UniformsUtils.clone(THREE.UniformsLib.fog), ...NATURE,
+        uLayer: { value: new THREE.Vector4(L.tile, L.inner, L.rho, L.tile === 0 ? 60 : far) },
+        uLod: { value: new THREE.Vector3(rho0, D0, P) },
+      },
+      vertexShader: NATURE_GLSL + BLADE_VERT,
+      fragmentShader: BLADE_FRAG,
+    });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.frustumCulled = false;
+    mesh.name = L.tile === 0 ? 'grass-tree' : 'grass-ring';
+    group.add(mesh);
   }
-  const rootMesh = new THREE.Mesh(branchGeometry(roots), bark);
-  rootMesh.castShadow = rootMesh.receiveShadow = true;
-  group.add(rootMesh);
-
-  // the crown sways about the top of the trunk
-  const pivot = new THREE.Group();
-  pivot.position.y = o.top;
-  const crownG = new THREE.Group();
-  crownG.position.y = -o.top;
-  pivot.add(crownG);
-  group.add(pivot);
-
-  const crown = growCrown({ trunkR: o.trunkR, top: o.top, sun: o.sun, clearY: o.clearY, leaves: o.leaves });
-  const RADIAL = [12, 8, 6, 4], SEGS = [5, 4, 3, 2];
-  const limbs = new THREE.Mesh(branchGeometry(crown.branches.map((b) => ({
-    curve: new THREE.CatmullRomCurve3(b.pts), segs: b.pts.length * SEGS[b.level], radial: RADIAL[b.level], r0: b.r0, r1: b.r1, flare: b.level === 0 ? 0.35 : 0.12,
-  }))), bark);
-  limbs.name = 'branches';
-  crownG.add(limbs);
-
-  // leaves
-  const n = o.leaves;
-  const card = new THREE.PlaneGeometry(1, 1, 2, 3).translate(0, 0.5, 0);
-  const cp = card.getAttribute('position') as THREE.BufferAttribute;
-  for (let i = 0; i < cp.count; i++) cp.setZ(i, -Math.abs(cp.getX(i)) * 0.22 + cp.getY(i) * cp.getY(i) * 0.12); // folded and curled
-  card.computeVertexNormals();
-  card.setAttribute('aMass', new THREE.InstancedBufferAttribute(crown.leafMass, 4));
-  card.setAttribute('aCol', new THREE.InstancedBufferAttribute(crown.leafCol, 3));
-  card.setAttribute('aVar', new THREE.InstancedBufferAttribute(crown.leafVar, 2));
-  const key = new THREE.Vector3(-3, 9, 4).normalize();
-  const leafMat = new THREE.ShaderMaterial({
-    side: THREE.DoubleSide,
-    fog: true,
-    uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, {
-      uMap: { value: null }, uTime: { value: 0 }, uWind: { value: 1 }, uSun: { value: new THREE.Vector3() }, uKey: { value: key },
-    }]),
-    vertexShader: /* glsl */ `
-      attribute vec4 aMass; attribute vec3 aCol; attribute vec2 aVar;
-      uniform float uTime; uniform float uWind;
-      varying vec2 vUv; varying vec3 vCol; varying vec3 vW; varying vec3 vN; varying vec3 vMass; varying float vExp; varying float vTip;
-      #include <fog_pars_vertex>
-      void main(){
-        vUv = (uv + vec2(mod(aVar.x, 2.0), 1.0 - floor(aVar.x / 2.0))) * 0.5;
-        vec3 root = instanceMatrix[3].xyz;
-        vec4 ip = instanceMatrix * vec4(position, 1.0);
-        // wind: slow gusts through the whole crown, stronger at its edges, and every sprig fluttering on its stem
-        float ph = aVar.y * 6.2831853;
-        float reach = 0.35 + smoothstep(0.6, 3.4, length(root.xz));
-        vec3 gust = vec3(sin(uTime * 0.7 + root.x * 0.45) + 0.5 * sin(uTime * 1.31 + root.z * 0.9), 0.25 * sin(uTime * 0.9 + root.y), 0.7 * cos(uTime * 0.55 + root.z * 0.4)) * 0.035 * reach;
-        vec3 flutter = vec3(sin(uTime * 2.3 + ph * 3.0), 0.6 * sin(uTime * 2.9 + ph * 5.0), cos(uTime * 1.9 + ph * 4.0)) * 0.03 * uv.y;
-        ip.xyz += (gust * (0.4 + 0.6 * uv.y) + flutter) * uWind;
-        vec4 w = modelMatrix * ip;
-        vW = w.xyz;
-        vN = normalize(mat3(modelMatrix) * mat3(instanceMatrix) * normal);
-        vMass = normalize(mat3(modelMatrix) * aMass.xyz);
-        vExp = aMass.w; vCol = aCol; vTip = uv.y;
-        vec4 mvPosition = viewMatrix * w;
-        gl_Position = projectionMatrix * mvPosition;
-        #include <fog_vertex>
-      }`,
-    fragmentShader: /* glsl */ `
-      uniform sampler2D uMap; uniform vec3 uSun; uniform vec3 uKey;
-      varying vec2 vUv; varying vec3 vCol; varying vec3 vW; varying vec3 vN; varying vec3 vMass; varying float vExp; varying float vTip;
-      #include <fog_pars_fragment>
-      void main(){
-        vec4 tx = texture2D(uMap, vUv);
-        if (tx.a < 0.42) discard;
-        vec3 V = normalize(cameraPosition - vW);
-        vec3 nf = normalize(vN); if (dot(nf, V) < 0.0) nf = -nf;   // the face turned to us
-        vec3 N = normalize(mix(nf, normalize(vMass), 0.75));       // shaded as part of its mass
-        vec3 S = uSun - vW; float ds = length(S); S /= ds;
-        float fall = 1.0 / (1.0 + ds * ds * 0.45);
-        // colour: the leaf's own green, varied leaf by leaf; warmer and golden near the sun
-        vec3 base = vCol * mix(0.62, 1.1, tx.r) * mix(vec3(0.86, 0.95, 0.82), vec3(1.16, 1.06, 0.82), tx.g);
-        base = mix(base, base * vec3(1.45, 1.2, 0.5) + vec3(0.035, 0.026, 0.0), clamp(fall * 1.3, 0.0, 1.0) * 0.6 * max(dot(N, S) * 0.7 + 0.3, 0.0));
-        float occl = mix(0.12, 1.0, vExp * vExp);                 // deep inside the foliage it is dark
-        float hemi = 0.5 + 0.5 * N.y;
-        vec3 amb = mix(vec3(0.02, 0.03, 0.02), vec3(0.16, 0.21, 0.3), hemi);
-        float key = max(dot(N, uKey), 0.0);
-        vec3 col = base * (amb * 1.3 + vec3(1.0, 0.8, 0.55) * key * 0.85) * occl;
-        // the sun at the head of the ladder lights the crown from within
-        col += base * vec3(1.0, 0.76, 0.4) * max(dot(N, S), 0.0) * fall * 3.0 * mix(0.25, 1.0, vExp);
-        // and shines through the leaves: gold-green where we look towards it
-        float behind = max(dot(-V, S), 0.0);
-        float through = pow(behind, 3.0) + 0.4 * max(dot(-nf, S), 0.0) * smoothstep(0.0, 0.7, behind);
-        col += vec3(0.62, 0.66, 0.1) * mix(0.35, 1.0, tx.r) * through * fall * 2.0 * mix(0.3, 1.0, vExp);
-        // a cool rim of evening sky along the outside of the crown
-        col += vec3(0.1, 0.13, 0.18) * pow(1.0 - max(dot(N, V), 0.0), 3.0) * vExp * 0.5;
-        gl_FragColor = vec4(col, 1.0);
-        #include <fog_fragment>
-      }`,
-  });
-  leafMat.uniforms.uMap.value = sprigAtlas();
-  leafMat.uniforms.uSun.value = o.sun;
-  const leaves = new THREE.InstancedMesh(card, leafMat, n);
-  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3();
-  for (let i = 0; i < n; i++) {
-    const L = crown.leafPos;
-    p.set(L[i * 4], L[i * 4 + 1], L[i * 4 + 2]);
-    q.fromArray(crown.leafRot, i * 4);
-    s.setScalar(L[i * 4 + 3]);
-    leaves.setMatrixAt(i, m4.compose(p, q, s));
-  }
-  leaves.computeBoundingSphere();
-  leaves.boundingSphere!.radius += 0.4;
-  leaves.name = 'leaves';
-  crownG.add(leaves);
-
-  // sparks: motes of light rising through the hollow around the sun, and leaves drifting down under the crown
-  const sparkGeo = (count: number) => {
-    const g = new THREE.BufferGeometry();
-    const seeds = new Float32Array(count * 4);
-    for (let i = 0; i < seeds.length; i++) seeds[i] = rnd();
-    g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(count * 3), 3));
-    g.setAttribute('aSeed', new THREE.BufferAttribute(seeds, 4));
-    g.boundingSphere = new THREE.Sphere(o.sun.clone(), crown.radius + 1);
-    return g;
-  };
-  const sparkUniforms = { uTime: { value: 0 }, uH: { value: 800 }, uSun: { value: o.sun }, uFloor: { value: crown.floorY }, uClear: { value: o.clearY } };
-  const motes = new THREE.Points(sparkGeo(o.sparks), new THREE.ShaderMaterial({
-    uniforms: sparkUniforms,
-    vertexShader: /* glsl */ `
-      attribute vec4 aSeed; uniform float uTime; uniform float uH; uniform vec3 uSun; varying float vA;
-      void main(){
-        float h = fract(aSeed.z + uTime * 0.01 * (0.5 + aSeed.w));
-        float a = aSeed.x * 6.2831853 + uTime * 0.04 * (aSeed.y - 0.5);
-        float r = 0.35 + aSeed.y * 2.4;
-        vec3 p = uSun + vec3(cos(a) * r, -0.45 + h * 2.4 + sin(uTime * 0.3 + aSeed.x * 20.0) * 0.05, sin(a) * r);
-        vec4 mv = modelViewMatrix * vec4(p, 1.0);
-        gl_Position = projectionMatrix * mv;
-        vA = sin(h * 3.14159) * (0.55 + 0.45 * sin(uTime * 1.7 + aSeed.w * 40.0)) / (1.0 + r * 0.4);
-        gl_PointSize = clamp((0.022 + 0.02 * aSeed.w) * projectionMatrix[1][1] * uH * 0.5 / -mv.z, 1.0, 9.0);
-      }`,
-    fragmentShader: /* glsl */ `varying float vA;
-      void main(){ float d = length(gl_PointCoord - 0.5); float a = (smoothstep(0.5, 0.0, d) * 0.5 + smoothstep(0.18, 0.0, d)) * vA;
-        gl_FragColor = vec4(vec3(1.0, 0.82, 0.48) * a * 1.4, a); }`,
-    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
-  }));
-  motes.name = 'crown-motes';
-  const falling = new THREE.Points(sparkGeo(Math.max(4, Math.round(o.sparks * 0.35))), new THREE.ShaderMaterial({
-    uniforms: sparkUniforms,
-    vertexShader: /* glsl */ `
-      attribute vec4 aSeed; uniform float uTime; uniform float uH; uniform float uFloor; uniform float uClear;
-      varying float vA; varying float vSpin; varying float vLit;
-      void main(){
-        float h = fract(aSeed.z + uTime * 0.012 * (0.6 + aSeed.w));
-        float a = aSeed.x * 6.2831853 + h * 0.5;
-        float r = 1.3 + aSeed.y * 1.9 + h * 0.4;
-        float sway = sin(uTime * 1.1 + aSeed.x * 30.0) * 0.18 * h;
-        vec3 p = vec3(cos(a) * r + sway * sin(a), mix(uFloor, uClear + 0.05, h), sin(a) * r - sway * cos(a));
-        vec4 mv = modelViewMatrix * vec4(p, 1.0);
-        gl_Position = projectionMatrix * mv;
-        vA = smoothstep(0.0, 0.12, h) * smoothstep(1.0, 0.8, h);
-        vSpin = uTime * (1.2 + aSeed.w * 2.0) + aSeed.y * 6.28;
-        vLit = 0.55 + 0.45 * sin(vSpin * 1.3);
-        gl_PointSize = clamp(0.1 * projectionMatrix[1][1] * uH * 0.5 / -mv.z, 1.5, 28.0);
-      }`,
-    fragmentShader: /* glsl */ `varying float vA; varying float vSpin; varying float vLit;
-      void main(){
-        vec2 q = gl_PointCoord - 0.5; float c = cos(vSpin), s = sin(vSpin);
-        q = vec2(c * q.x - s * q.y, s * q.x + c * q.y);
-        float w = 0.17 * (1.0 - pow(abs(q.y) / 0.45, 2.0)) * (0.6 + 0.4 * abs(sin(vSpin * 0.7)));
-        if (abs(q.y) > 0.45 || abs(q.x) > w || vA < 0.02) discard;
-        gl_FragColor = vec4(mix(vec3(0.16, 0.24, 0.04), vec3(0.62, 0.55, 0.12), vLit) * (0.8 + 0.4 * vA), vA);
-      }`,
-    transparent: true, depthWrite: false,
-  }));
-  falling.name = 'falling-leaves';
-  crownG.add(motes, falling);
-
+  if (o.flowers > 0) group.add(createFlowers(o.flowers, rnd));
   return {
     group,
-    maxY: crown.maxY,
-    radius: crown.radius,
-    update(t, wind) {
-      leafMat.uniforms.uTime.value = t;
-      leafMat.uniforms.uWind.value = wind;
-      sparkUniforms.uTime.value = t;
-      motes.visible = falling.visible = wind > 0;
-      // a breath of wind in the whole crown
-      pivot.rotation.set(Math.sin(t * 0.31) * 0.004 * wind, 0, Math.sin(t * 0.37 + 1) * 0.005 * wind);
-    },
-    setPixelHeight(h) { sparkUniforms.uH.value = h; },
     dispose() {
       group.traverse((ob) => {
-        const mesh = ob as THREE.Mesh;
-        if (!mesh.geometry) return;
-        mesh.geometry.dispose();
-        for (const m of ([] as THREE.Material[]).concat(mesh.material)) {
-          for (const v of Object.values(m)) if (v instanceof THREE.Texture) v.dispose();
-          if (m instanceof THREE.ShaderMaterial) for (const u of Object.values(m.uniforms)) if (u.value instanceof THREE.Texture) u.value.dispose();
-          m.dispose();
-        }
+        const m = ob as THREE.Mesh;
+        if (!m.geometry) return;
+        m.geometry.dispose();
+        (m.material as THREE.Material).dispose();
       });
     },
   };
 }
 
+/** Wildflowers and seed heads: daisies, buttercups, cornflowers and oat-like spikes, in loose patches. */
+function createFlowers(count: number, rnd: () => number): THREE.Mesh {
+  const pos: number[] = [], idx: number[] = [];
+  const S = 3;
+  for (let i = 0; i <= S; i++) pos.push(-1, i / S, 0, 1, i / S, 0);
+  for (let i = 0; i < S; i++) { const a = i * 2; idx.push(a, a + 1, a + 2, a + 2, a + 1, a + 3); }
+  const h0 = pos.length / 3;
+  pos.push(-1, -1, 1, 1, -1, 1, -1, 1, 1, 1, 1, 1);
+  idx.push(h0, h0 + 1, h0 + 2, h0 + 2, h0 + 1, h0 + 3);
+  const geo = new THREE.InstancedBufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setIndex(idx);
+  const a = new Float32Array(count * 4), b = new Float32Array(count * 4);
+  let n = 0;
+  while (n < count) {
+    const r = Math.sqrt(1.8 * 1.8 + rnd() * (9.5 * 9.5 - 1.8 * 1.8)), ang = rnd() * Math.PI * 2;
+    const cx = Math.sin(ang) * r, cz = Math.cos(ang) * r;
+    const kind = rnd() < 0.3 ? 3 : Math.floor(rnd() * 3);
+    const size = 4 + Math.floor(rnd() * 14);
+    for (let k = 0; k < size && n < count; k++) {
+      const x = cx + (rnd() - 0.5) * 0.9, z = cz + (rnd() - 0.5) * 0.9;
+      if (blocked(x, z, 0.03) || Math.hypot(x, z) < 1.7) continue;
+      const kk = rnd() < 0.8 ? kind : Math.floor(rnd() * 4);
+      const h = kk === 3 ? 0.22 + rnd() * 0.14 : 0.1 + rnd() * 0.12;
+      a.set([x, z, h, kk], n * 4);
+      b.set([kk === 3 ? 0.022 + rnd() * 0.01 : 0.011 + rnd() * 0.008, rnd(), 0.1 + rnd() * 0.35, rnd()], n * 4);
+      n++;
+    }
+  }
+  geo.setAttribute('aF', new THREE.InstancedBufferAttribute(a, 4));
+  geo.setAttribute('aG', new THREE.InstancedBufferAttribute(b, 4));
+  geo.instanceCount = n;
+  const mat = new THREE.ShaderMaterial({
+    side: THREE.DoubleSide,
+    fog: true,
+    uniforms: { ...THREE.UniformsUtils.clone(THREE.UniformsLib.fog), ...NATURE },
+    vertexShader: NATURE_GLSL + /* glsl */ `
+      attribute vec4 aF; attribute vec4 aG;
+      varying vec3 vLight; varying vec2 vUv; varying float vHead; varying float vKind; varying float vTint;
+      #include <fog_pars_vertex>
+      void main(){
+        vec2 xz = aF.xy; float h = aF.z, kind = aF.w, size = aG.x, seed = aG.y;
+        vec3 root = vec3(xz.x, GROUND_Y - 0.005, xz.y);
+        float camD = distance(root, cameraPosition);
+        float fade = 1.0 - smoothstep(12.0, 16.0, camD);
+        if (fade < 0.01) { gl_Position = vec4(0.0, 0.0, 2.0, 1.0); return; }
+        float la = seed * 6.2832;
+        vec2 bend = vec2(cos(la), sin(la)) * aG.z + windAt(xz, uTime, seed) * (0.6 + 2.0 * h);
+        float beta = length(bend) + 1e-4; vec2 bd = bend / beta; beta = min(beta, 1.2);
+        bool head = position.z > 0.5;
+        float t = head ? 1.0 : position.y;
+        float an = beta * t;
+        vec3 sp = root + vec3(bd.x, 0.0, bd.y) * h * (1.0 - cos(an)) / beta + vec3(0.0, h * sin(an) / beta, 0.0);
+        vec3 tang = normalize(vec3(bd.x * sin(an), cos(an), bd.y * sin(an)));
+        vec3 V = normalize(cameraPosition - sp);
+        vec3 rt = normalize(cross(tang, V));
+        vec3 wp;
+        if (head) {
+          float sz = size * fade;
+          vec3 yAx = kind > 2.5 ? tang : normalize(mix(normalize(cross(V, rt)), tang, 0.35));
+          vec2 hs = kind > 2.5 ? vec2(0.32, 1.0) * sz : vec2(sz);
+          wp = sp + rt * position.x * hs.x + yAx * (position.y * hs.y + (kind > 2.5 ? hs.y * 0.85 : 0.0));
+          vUv = position.xy;
+        } else {
+          wp = sp + rt * position.x * 0.0013 * fade;
+          vUv = vec2(position.x, t);
+        }
+        vHead = head ? 1.0 : 0.0; vKind = kind; vTint = aG.w;
+        vec3 N = normalize(V + vec3(0.0, 0.5, 0.0));
+        float sh = keyShadow(wp);
+        vec3 S; float fall; vec3 sc = sunLight(wp, N, S, fall);
+        float back = pow(max(dot(-V, KEY_DIR), 0.0), 4.0);
+        vLight = ambient(N) * mix(0.5, 1.0, t) * contactAO(wp) + KEY_COL * (0.18 + back * 0.7) * sh + sc * 0.35 * smoothstep(1.5, 3.0, length(xz));
+        vec4 mvPosition = viewMatrix * vec4(wp, 1.0);
+        gl_Position = projectionMatrix * mvPosition;
+        #include <fog_vertex>
+      }`,
+    fragmentShader: /* glsl */ `
+      varying vec3 vLight; varying vec2 vUv; varying float vHead; varying float vKind; varying float vTint;
+      #include <fog_pars_fragment>
+      void main(){
+        vec3 c;
+        if (vHead > 0.5) {
+          vec2 p = vUv; float r = length(p); float ang = atan(p.y, p.x);
+          float a;
+          if (vKind < 0.5) {          // daisy
+            float pr = 0.5 + 0.5 * pow(abs(cos(ang * 6.5)), 0.7);
+            a = step(r, pr * 0.98);
+            c = r < 0.3 ? vec3(0.85, 0.55, 0.05) : vec3(0.82, 0.8, 0.74) * (0.8 + 0.2 * (1.0 - r));
+          } else if (vKind < 1.5) {   // buttercup
+            float pr = 0.72 + 0.28 * cos(ang * 5.0);
+            a = step(r, pr * 0.9);
+            c = vec3(0.95, 0.66, 0.05) * (0.65 + 0.45 * (1.0 - r));
+          } else if (vKind < 2.5) {   // cornflower
+            float pr = 0.7 + 0.3 * fract(sin(floor(ang * 2.6 + 9.0) * 91.7) * 43.1);
+            a = step(r, pr * 0.95);
+            c = mix(vec3(0.22, 0.16, 0.62), vec3(0.42, 0.24, 0.62), vTint) * (0.7 + 0.5 * r);
+          } else {                    // seed head
+            float w = 0.9 * sqrt(max(1.0 - p.y * p.y, 0.0)) * (0.65 + 0.35 * abs(sin(p.y * 14.0)));
+            a = step(abs(p.x), w);
+            c = mix(vec3(0.42, 0.33, 0.14), vec3(0.62, 0.5, 0.24), vTint) * (0.75 + 0.25 * p.y);
+          }
+          if (a < 0.5) discard;
+        } else c = mix(vec3(0.05, 0.09, 0.02), vec3(0.14, 0.2, 0.05), vUv.y);
+        gl_FragColor = vec4(c * vLight, 1.0);
+        #include <fog_fragment>
+      }`,
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.frustumCulled = false;
+  mesh.name = 'flowers';
+  return mesh;
+}
 
-/** Rays of the sun at the head of the ladder. */
+/** Soft rays of the sun at the head of the ladder: a stand-in for the god rays where the quality is low. */
 export function makeRaysTexture(): THREE.CanvasTexture {
-  const [c, x] = canvas(512, 512);
+  const c = document.createElement('canvas');
+  c.width = c.height = 512;
+  const x = c.getContext('2d')!;
   x.translate(256, 256);
-  for (let i = 0; i < 28; i++) {
-    const a = (i / 28) * Math.PI * 2 + (i % 2) * 0.05;
-    const len = 180 + (i % 3) * 50;
+  x.filter = 'blur(3px)';
+  const rnd = seeded(5);
+  for (let i = 0; i < 64; i++) {
+    const a = rnd() * Math.PI * 2;
+    const len = 120 + rnd() * 130, wd = 0.01 + rnd() * 0.03;
     const g = x.createLinearGradient(0, 0, Math.cos(a) * len, Math.sin(a) * len);
-    g.addColorStop(0, 'rgba(255,240,200,0.55)');
-    g.addColorStop(1, 'rgba(255,220,160,0)');
+    g.addColorStop(0, `rgba(255,236,196,${(0.12 + rnd() * 0.2).toFixed(3)})`);
+    g.addColorStop(1, 'rgba(255,214,150,0)');
     x.fillStyle = g;
     x.beginPath();
     x.moveTo(0, 0);
-    x.lineTo(Math.cos(a - 0.035) * len, Math.sin(a - 0.035) * len);
-    x.lineTo(Math.cos(a + 0.035) * len, Math.sin(a + 0.035) * len);
+    x.lineTo(Math.cos(a - wd) * len, Math.sin(a - wd) * len);
+    x.lineTo(Math.cos(a + wd) * len, Math.sin(a + wd) * len);
     x.fill();
   }
   return new THREE.CanvasTexture(c);
