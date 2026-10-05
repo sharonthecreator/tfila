@@ -168,6 +168,22 @@ against the cached editions. The findings were fixed and are now enforced by `np
   Hashanah Amidah.
 - Nachem was added for Edot HaMizrach and Sefard, along with a number of factual corrections.
 
+**Order audit.** A second, strict audit checked the order of every route, pair by pair, against the editions' own
+section order and rubrics. Each finding was re-checked before it was fixed:
+- Yom Kippur:
+  - The Edot HaMizrach Selichot after Shacharit, Musaf and Mincha are now included, each with its half Kaddish.
+  - Avinu Malkenu was added at Mincha.
+  - Birkat Kohanim was added at Shacharit and Ne'ilah.
+  - The missing Kaddish seams were added.
+  - Unetaneh Tokef now comes before Musaf's half Kaddish.
+- Rosh Hashanah: Hineni and Unetaneh Tokef now come before Musaf's half Kaddish.
+- Shabbat: Birkat HaBanim now follows Kiddush in Edot HaMizrach, and Atkinu precedes the daytime Kiddush.
+- Rosh Chodesh: Ashrei, Uva LeTzion and the half Kaddish before Musaf were added.
+- Sukkot: the Hoshanot now precede the Kaddish (Sha'ar HaKavanot), and Yizkor precedes Geshem.
+- Purim: the Torah reading now precedes the day Megillah.
+- Tisha B'Av: Tachanun's (omitted) place is now right after the Amidah.
+- The Kabbalists' night: the morning blessings now precede Tikkun Chatzot, and Petichat Eliyahu follows Tikkun Leah.
+
 Divine Names appear in full only in the reader. In decorative places (the pillar, the medallions, the LIVE ticker)
 they are written as ה׳ / אלקים / אד׳.
 

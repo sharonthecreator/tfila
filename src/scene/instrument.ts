@@ -74,7 +74,7 @@ export function createMotes(count: number): THREE.Points {
   const seed = new Float32Array(count);
   for (let i = 0; i < count; i++) {
     const r = 1.7 + Math.random() * 3.4, a = Math.random() * Math.PI * 2;
-    pos.set([Math.cos(a) * r, TABLE_Y + 0.2 + Math.random() * 4.6, Math.sin(a) * r], i * 3);
+    pos.set([Math.cos(a) * r, TABLE_Y + 0.6 + Math.random() * 4.2, Math.sin(a) * r], i * 3);
     seed[i] = Math.random() * 100;
   }
   const geo = new THREE.BufferGeometry();

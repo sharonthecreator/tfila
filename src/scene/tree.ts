@@ -207,7 +207,7 @@ function branchGeometry(list: Tube[]): THREE.BufferGeometry {
     }
     for (let i = 0; i < b.segs; i++) for (let j = 0; j < b.radial; j++) {
       const a = v0 + i * (b.radial + 1) + j, c = a + b.radial + 1;
-      idx.push(a, c, a + 1, c, c + 1, a + 1);
+      idx.push(a, a + 1, c, c, a + 1, c + 1);
     }
   }
   const g = new THREE.BufferGeometry();

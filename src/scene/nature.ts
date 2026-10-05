@@ -369,7 +369,7 @@ const BLADE_VERT = /* glsl */ `
     if (uLayer.x > 0.0) {
       float want = uLod.x / (1.0 + pow(camD / uLod.y, uLod.z));
       if (fract(seed * 13.37) > want / uLayer.z) keep = 0.0;
-    }
+    } else if (fract(seed * 13.37) > clamp(1.4 - camD / 7.5, 0.18, 1.0)) keep = 0.0;   // the meadow around the tree thins out from afar too, or it glitters
     h *= 1.0 - smoothstep(uLayer.w * 0.8, uLayer.w, camD);
     if (keep < 0.5 || h < 0.003) { gl_Position = vec4(0.0, 0.0, 2.0, 1.0); vCol = vec3(0.0); vSide = 0.0; return; }
 
@@ -405,17 +405,20 @@ const BLADE_VERT = /* glsl */ `
     float sh = keyShadow(wp);
     float NL = dot(N, KEY_DIR);
     float back = pow(max(dot(-V, KEY_DIR), 0.0), 5.0);
-    vec3 trans = vec3(0.95, 1.1, 0.42) * (max(-NL, 0.0) * 0.45 + back * 0.9) * smoothstep(0.1, 0.8, t) * (1.0 - 0.55 * farK);  // the low light shining through the blades
+    vec3 trans = vec3(0.95, 1.1, 0.42) * (max(-NL, 0.0) * 0.45 + back * 0.9) * smoothstep(0.1, 0.8, t) * (1.0 - 0.8 * farK);  // the low light shining through the blades
     vec3 light = ambient(N) * ao + FILL_COL * max(dot(N, FILL_DIR), 0.0) * ao;
     light += KEY_COL * (max(NL, 0.0) * 0.75 + 0.2 + trans) * sh * mix(0.35, 1.0, t);
     vec3 S; float fall; vec3 sc = sunLight(wp, N, S, fall);
     float sunVis = smoothstep(1.5, 3.0, length(wp.xz));
-    light += sc * (max(dot(N, S), 0.0) * 0.9 + pow(max(dot(-V, S), 0.0), 6.0) * 0.9 * t) * sunVis * mix(0.4, 1.0, t);
+    light += sc * (max(dot(N, S), 0.0) * 0.9 + pow(max(dot(-V, S), 0.0), 6.0) * 0.5 * t * (1.0 - 0.7 * farK)) * sunVis * mix(0.4, 1.0, t);
     vec3 H = normalize(KEY_DIR + V);
     vCol = c * light + KEY_COL * pow(max(dot(N, H), 0.0), 24.0) * 0.05 * sh * t;
     // far off, a blade takes the colour the field has there (the ground carries on with the same model)
     float facing = 0.5 + 0.5 * dot(normalize(V.xz + vec2(1e-4)), normalize(KEY_DIR.xz));
     vec3 fieldL = ambient(vec3(0.0, 0.35, 0.9)) * cao + FILL_COL * 0.5 + KEY_COL * (0.16 + 0.5 * facing + 0.3 * pow(1.0 - facing, 3.0)) * sh;
+    // and the light of the sun in the crown, as the ground under it has it (or the blades around the tree show dark against it)
+    vec3 S2; float fall2; vec3 sc2 = sunLight(wp, vec3(0.0, 1.0, 0.0), S2, fall2);
+    fieldL += sc2 * S2.y * 1.6 * smoothstep(1.4, 3.0, length(wp.xz));
     vec3 fieldC = mix(bladeMid(dry), bladeTip(dry), 0.2 + 0.5 * t) * (0.7 + 0.5 * t) * fieldL;
     vCol = mix(vCol, fieldC, smoothstep(6.0, 16.0, camD) * 0.75);
     vSide = side;
@@ -539,7 +542,7 @@ function createFlowers(count: number, rnd: () => number): THREE.Mesh {
         vec2 xz = aF.xy; float h = aF.z, kind = aF.w, size = aG.x, seed = aG.y;
         vec3 root = vec3(xz.x, GROUND_Y - 0.005, xz.y);
         float camD = distance(root, cameraPosition);
-        float fade = 1.0 - smoothstep(12.0, 16.0, camD);
+        float fade = 1.0 - smoothstep(9.0, 13.0, camD);
         if (fade < 0.01) { gl_Position = vec4(0.0, 0.0, 2.0, 1.0); return; }
         float la = seed * 6.2832;
         vec2 bend = vec2(cos(la), sin(la)) * aG.z + windAt(xz, uTime, seed) * (0.6 + 2.0 * h);

@@ -51,6 +51,7 @@ export const KADDISH = {
   // ── Rosh Chodesh ──
   rcHallel: { em: R('em', 'Rosh Hodesh/Hallel', { from: 25, count: 5 }), ash: ASH.titkabal, sef: R('sef', 'Rosh Chodesh/Hallel', { from: 29, count: 6 }) },
   rcTorah: { em: R('em', 'Rosh Hodesh/Hallel', { from: 40, count: 2 }), ash: ASH.half },
+  rcMusafHalf: { em: R('em', 'Rosh Hodesh/Song of the Day', { from: 17, count: 2 }), ash: ASH.half },
   rcMusaf: { em: R('em', 'Rosh Hodesh/Mussaf', { from: 43, count: 5 }), ash: ASH.titkabal, sef: R('sef', 'Rosh Chodesh/Mussaf', { from: 39, count: 5 }) },
   rcBarchiNafshi: { em: R('em', 'Rosh Hodesh/Barchi Nafshi', { from: 3, count: 3 }), ash: ASH.yatom, sef: R('sef', 'Rosh Chodesh/Barchi Nafshi', { from: 3, count: 3 }) },
   // ── Rosh Hashanah ──

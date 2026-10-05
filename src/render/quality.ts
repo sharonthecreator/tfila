@@ -33,16 +33,16 @@ export interface QualityPreset {
 
 const PRESETS: Record<Exclude<Quality, 'auto'>, QualityPreset> = {
   low: {
-    dpr: 1, msaa: 0, shadows: false, shadowSize: 512, bloomLevels: 4, tileSize: 512, maxTiles: 10, visibleTiles: 6, dustWidth: 2048, shell: false, motes: 120,
-    grass: [7000, 4000, 3000, 0], grassSegs: [3, 4, 3, 2], flowers: 100, leaves: 1600, leafTex: 256, sparks: 24, godRays: 0, grain: 0, barkHQ: false,
+    dpr: 1, msaa: 0, shadows: false, shadowSize: 512, bloomLevels: 4, tileSize: 512, maxTiles: 10, visibleTiles: 6, dustWidth: 2048, shell: false, motes: 80,
+    grass: [7000, 4000, 3000, 0], grassSegs: [3, 4, 3, 2], flowers: 60, leaves: 1600, leafTex: 256, sparks: 24, godRays: 0, grain: 0, barkHQ: false,
   },
   medium: {
-    dpr: 1.5, msaa: 0, shadows: true, shadowSize: 1024, bloomLevels: 5, tileSize: 768, maxTiles: 16, visibleTiles: 9, dustWidth: 4096, shell: true, motes: 260,
-    grass: [15000, 14000, 18000, 16000], grassSegs: [5, 5, 3, 2], flowers: 320, leaves: 4500, leafTex: 512, sparks: 60, godRays: 36, grain: 0.022, barkHQ: true,
+    dpr: 1.5, msaa: 0, shadows: true, shadowSize: 1024, bloomLevels: 5, tileSize: 768, maxTiles: 16, visibleTiles: 9, dustWidth: 4096, shell: true, motes: 170,
+    grass: [15000, 14000, 18000, 16000], grassSegs: [5, 5, 3, 2], flowers: 200, leaves: 4500, leafTex: 512, sparks: 60, godRays: 36, grain: 0.022, barkHQ: true,
   },
   high: {
-    dpr: 2, msaa: 4, shadows: true, shadowSize: 2048, bloomLevels: 7, tileSize: 1024, maxTiles: 26, visibleTiles: 12, dustWidth: 4096, shell: true, motes: 420,
-    grass: [30000, 30000, 32000, 30000], grassSegs: [6, 6, 4, 3], flowers: 700, leaves: 9000, leafTex: 512, sparks: 110, godRays: 60, grain: 0.026, barkHQ: true,
+    dpr: 2, msaa: 4, shadows: true, shadowSize: 2048, bloomLevels: 7, tileSize: 1024, maxTiles: 26, visibleTiles: 12, dustWidth: 4096, shell: true, motes: 270,
+    grass: [30000, 30000, 32000, 30000], grassSegs: [6, 6, 4, 3], flowers: 440, leaves: 9000, leafTex: 512, sparks: 110, godRays: 60, grain: 0.026, barkHQ: true,
   },
 };
 

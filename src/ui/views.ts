@@ -176,13 +176,22 @@ function learnYK(): string {
   const W = 860, padR = 150, padL = 20, top = 34, rowH = 40;
   const x = (i: number) => W - padR - (i / (r.stops.length - 1)) * (W - padR - padL);
   const H = top + rows.length * rowH + 30;
-  const bands = secs.map((s) => `<rect x="${x(s.end) - 6}" y="0" width="${x(s.start) - x(s.end) + 12}" height="${H - 18}" fill="${s.color}" opacity="0.07" rx="6"/><text x="${x(s.start)}" y="14" text-anchor="end" class="he" style="fill:${s.color}">${escapeHtml(s.name)}</text>`).join('');
+  // after a narrow section, the next name drops to a second line so the two do not run into each other
+  let low = false;
+  const bands = secs.map((s, k) => {
+    low = !low && k > 0 && x(secs[k - 1].start) - x(secs[k - 1].end) < 110;
+    return `<rect x="${x(s.end) - 6}" y="0" width="${x(s.start) - x(s.end) + 12}" height="${H - 18}" fill="${s.color}" opacity="0.07" rx="6"/><text x="${x(s.start)}" y="${low ? 27 : 14}" text-anchor="end" class="he" style="fill:${s.color}">${escapeHtml(s.name)}</text>`;
+  }).join('');
   const lines = rows.map((id, k) => {
     const y = top + k * rowH + 16;
     const occ = r.stops.map((s, i) => ({ s, i })).filter(({ s }) => s.n === id);
+    let dropped = false;
     return `<text x="${W - 6}" y="${y + 4}" text-anchor="start" class="he">${escapeHtml(nodeById(id).title)}</text>
       <line x1="${x(0)}" x2="${x(r.stops.length - 1)}" y1="${y}" y2="${y}" stroke="rgba(255,255,255,.08)"/>
-      ${occ.map(({ i }) => `<circle cx="${x(i)}" cy="${y}" r="6" fill="${secs[of[i]].color}" stroke="#05070a" stroke-width="2"><title>תחנה ${i + 1}</title></circle><text x="${x(i)}" y="${y + 20}" text-anchor="middle">${i + 1}</text>`).join('')}`;
+      ${occ.map(({ i }, j) => {
+        dropped = !dropped && j > 0 && i - occ[j - 1].i < 2;   // neighbouring stops: one number a line lower
+        return `<circle cx="${x(i)}" cy="${y}" r="6" fill="${secs[of[i]].color}" stroke="#05070a" stroke-width="2"><title>תחנה ${i + 1}</title></circle><text x="${x(i)}" y="${y + (dropped ? 30 : 20)}" text-anchor="middle">${i + 1}</text>`;
+      }).join('')}`;
   }).join('');
   const count = (id: string) => r.stops.filter((s) => s.n === id).length;
   return `<p class="intro">ביום הכיפורים מתפללים חמש תפילות — ערבית, שחרית, מוסף, מנחה ונעילה — ובכל אחת חוזרים אותם רכיבים. העמידה נאמרת <b class="mono">${count('amidah-yk')}</b> פעמים, הווידוי מופיע <b class="mono">${count('vidui-yk')}</b> פעמים במסלול (כולל במנחה של ערב החג), ו״אבינו מלכנו״ <b class="mono">${count('avinu-malkenu')}</b> פעמים; הקדיש — <b class="mono">${count('kaddish')}</b> פעמים, חוליה בין חלקי כל תפילה. בכל מופע הטקסט שונה מעט — בנעילה, למשל, אומרים ״חתמנו״ במקום ״כתבנו״ ואין ״על חטא״.</p>

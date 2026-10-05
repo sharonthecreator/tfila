@@ -33,8 +33,8 @@ if (['all', 'desktop'].includes(only)) {
   await wait(p, 4500);
   await p.screenshot({ path: `${out}/02-yom-kippur.png` });
   check((await p.locator('#explain h2').textContent()).includes('יום כיפור'), 'explain shows the Yom Kippur route');
-  check(await p.locator('#dock .slider .marks i').count() === 54, 'route scrubber has a mark per stop');
-  check(await p.locator('.badge').count() === 54, 'numbered badges for every stop');
+  check(await p.locator('#dock .slider .marks i').count() === 69, 'route scrubber has a mark per stop');
+  check(await p.locator('.badge').count() === 69, 'numbered badges for every stop');
   check(!(await p.locator('#crumbs').isHidden()) && (await p.locator('#crumbs').textContent()).includes('יום כיפור'), 'breadcrumb shows the route');
   check((await p.locator('#readouts .climb figcaption').textContent()).includes('אצילות ×'), 'readouts chart the climb up and down the ladder');
 
@@ -58,8 +58,8 @@ if (['all', 'desktop'].includes(only)) {
   await p.keyboard.press('Escape');
   check(await p.locator('#reader').isHidden(), 'Escape closes the reader');
 
-  // repeated occurrence: stop 14 is Vidui 2/7
-  await p.evaluate(() => { const s = document.querySelector('#scrub'); s.value = '13'; s.dispatchEvent(new Event('input')); });
+  // repeated occurrence: stop 15 is Vidui 2/7
+  await p.evaluate(() => { const s = document.querySelector('#scrub'); s.value = '14'; s.dispatchEvent(new Event('input')); });
   await wait(p, 1500);
   check((await p.locator('#explain .spec').textContent()).includes('מופע 2/7'), 'Vidui shows its occurrence 2/7');
 
@@ -180,7 +180,7 @@ if (['all', 'views'].includes(only)) {
   await wait(p, 800);
   await p.screenshot({ path: `${out}/10-learn.png` });
   await p.click('#learnView [data-i="2"]');
-  check(await p.locator('#learnView svg.chart circle').count() === 27, 'learn chart plots all 27 repeated Yom Kippur occurrences (incl. Kaddish)');
+  check(await p.locator('#learnView svg.chart circle').count() === 39, 'learn chart plots all 39 repeated Yom Kippur occurrences (incl. Kaddish)');
   await p.click('#learnView [data-i="0"]');
   await wait(p, 800);
   check((await p.locator('#ariWorlds').textContent()).includes('עולם'), 'the ladder explainer quotes the Ari from Sha\'ar HaKavanot');
