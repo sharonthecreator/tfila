@@ -141,14 +141,14 @@ if (['all', 'journey'].includes(only)) {
   await p.click('#dock [data-speed="2"]');
   check(await p.locator('#dock [data-speed="2"][aria-checked="true"]').count() === 1, 'pace switches to fast');
   check(await p.evaluate(() => JSON.parse(localStorage.getItem('tfila.prefs') || '{}').speed) === 2, 'the chosen pace is remembered');
-  await p.click('#dock [data-act="journey"]');
+  await p.click('#dock .pace [data-act="journey"]');
   await wait(p, 18000); // software-rendered test browsers run at a couple of frames per second
   const cur = await p.locator('#readouts .ro.big.accent .val').textContent();
   check(parseInt(cur) >= 2, 'guided journey advances (now at ' + cur.trim() + ')');
   // the dock redraws at every stop of the journey, so press "stop" directly rather than chase a moving button
-  await p.evaluate(() => (document.querySelector('#dock [data-act="journey"]')).click());
+  await p.evaluate(() => (document.querySelector('#dock .pace [data-act="journey"]')).click());
   await wait(p, 600);
-  check(await p.locator('#dock [data-act="journey"][aria-pressed="false"]').count() === 1, 'the journey stops');
+  check(await p.locator('#dock .pace [data-act="journey"][aria-pressed="false"]').count() === 1, 'the journey stops');
   await p.click('#motionBtn');
   check(await p.evaluate(() => document.body.classList.contains('reduce-motion')), 'reduced motion toggles');
   await p.click('#quality [data-q="low"]');
@@ -198,6 +198,29 @@ if (['all', 'mobile'].includes(only)) {
   await p.click('#explain [data-read]');
   await wait(p, 1500);
   await p.screenshot({ path: `${out}/12-mobile-reader.png` });
+  await p.keyboard.press('Escape');
+  await wait(p, 500);
+  // phones: bottom tab bar, bottom sheet, nusach picker, route transport
+  check(await p.locator('#mnav').isVisible() && !(await p.locator('#tabs').isVisible()), 'phones get a bottom tab bar instead of the top tabs');
+  check(await p.locator('#explain .actions').isVisible(), 'the peeking sheet shows the main actions');
+  await p.click('#explain [data-sheet-toggle]');
+  await wait(p, 600);
+  check(await p.evaluate(() => document.body.dataset.sheet) === 'half', 'tapping the sheet handle opens it to half height');
+  check(await p.locator('#dock .m-transport').isVisible(), 'route transport (previous / journey / pace / next) is shown');
+  const before = await p.evaluate(() => location.hash);
+  await p.click('#dock .m-transport [aria-label="התחנה הבאה"]');
+  await wait(p, 1500);
+  check(before !== await p.evaluate(() => location.hash), 'the next-stop button moves along the route');
+  await p.click('#nsBtn');
+  await wait(p, 400);
+  check(await p.locator('#nsPanel [data-ns]').count() === 7, 'the nusach picker lists all seven');
+  await p.click('#nsPanel [data-ns="sef"]');
+  await wait(p, 600);
+  check((await p.locator('#nsBtnLabel').textContent()).includes('ספרד'), 'choosing a nusach updates the top bar');
+  await p.click('#mnav [data-tab="library"]');
+  await wait(p, 600);
+  check(!(await p.locator('#libraryView').isHidden()) && await p.locator('#crumbs').isHidden(), 'the tab bar opens the library (without the route bar over it)');
+  await p.screenshot({ path: `${out}/12b-mobile-library.png` });
   await p.close();
 }
 

@@ -7,7 +7,7 @@ import { loadWorld, loadPreview } from './data';
 import { escapeHtml } from './hebrew';
 import { $, on, emit, announce } from './ui/dom';
 import { openReader, closeReader, rerenderReader, isReaderOpen } from './ui/reader';
-import { renderExplain, renderReadouts, renderDock, renderLive, renderCrumbs, setLivePreviews } from './ui/lab';
+import { renderExplain, renderReadouts, renderDock, renderLive, renderCrumbs, renderNsSheet, setLivePreviews } from './ui/lab';
 import { bindSearch, run as runSearch } from './ui/search';
 import { renderLibrary, renderCompare, renderLearn, renderHelp } from './ui/views';
 import type { PrayerWorld } from './scene/PrayerWorld';
@@ -246,6 +246,7 @@ function applyTab(): void {
   const t = state.tab;
   document.body.dataset.tab = t;
   $('tabs').querySelectorAll('button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === t)));
+  $('mnav').querySelectorAll('button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === t)));
   $('libraryView').hidden = t !== 'library';
   $('compareView').hidden = t !== 'compare';
   $('learnView').hidden = t !== 'learn';
@@ -361,7 +362,9 @@ function updateInsets(): void {
   if (!world3d) return;
   const mobile = innerWidth <= 760;
   const ex = $('explain'), ro = $('readouts'), dock = $('dock');
-  if (mobile) world3d.setInsets({ top: $('crumbs').hidden ? 110 : 196, bottom: dock.offsetHeight + ex.offsetHeight + 24 });
+  document.documentElement.style.setProperty('--dock-h', dock.offsetHeight + 'px');
+  // phones: top bar (+ breadcrumb) above; tab bar, dock and the peeking sheet below
+  if (mobile) world3d.setInsets({ top: $('crumbs').hidden ? 64 : 112, bottom: $('mnav').offsetHeight + dock.offsetHeight + Math.min(ex.offsetHeight, innerHeight * 0.3) + 24 });
   else world3d.setInsets({
     top: 70,
     right: ex.offsetWidth + 30,
@@ -369,6 +372,58 @@ function updateInsets(): void {
     bottom: dock.offsetHeight + 20,
   });
   document.documentElement.style.setProperty('--live-h', `${Math.min(236, Math.max(150, innerHeight * 0.24))}px`);
+}
+
+// ───────────────────────────── phones ─────────────────────────────
+/**
+ * On a phone the views live in a bottom tab bar, the search opens over the top bar, the nusach is chosen from a sheet,
+ * and the explain panel is a bottom sheet with three heights — peek (title and actions), half, full — that you tap or
+ * swipe on its handle.
+ */
+type SheetState = 'peek' | 'half' | 'full';
+const SHEETS: SheetState[] = ['peek', 'half', 'full'];
+function setSheet(v: SheetState): void {
+  document.body.dataset.sheet = v;
+  $('explain').querySelector('[data-sheet-toggle]')?.setAttribute('aria-expanded', String(v !== 'peek'));
+  requestAnimationFrame(updateInsets);
+}
+function bindMobile(): void {
+  if (!document.body.dataset.sheet) document.body.dataset.sheet = 'peek';
+  $('mnav').querySelectorAll<HTMLElement>('button').forEach((b) => (b.onclick = () => set({ tab: b.dataset.tab as Tab })));
+  $('searchBtn').onclick = () => {
+    const on = !document.body.classList.contains('searching');
+    document.body.classList.toggle('searching', on);
+    $('searchBtn').setAttribute('aria-expanded', String(on));
+    if (on) $('q').focus();
+  };
+  $('q').addEventListener('blur', () => setTimeout(() => {
+    if (!$('q').matches(':focus') && !($('q') as HTMLInputElement).value) { document.body.classList.remove('searching'); $('searchBtn').setAttribute('aria-expanded', 'false'); }
+  }, 200));
+  $('nsBtn').onclick = () => emit('ns-sheet', true);
+  $('nsSheet').addEventListener('click', (e) => { if (e.target === $('nsSheet')) emit('ns-sheet', false); });
+  on('ns-sheet', (v) => {
+    $('nsSheet').hidden = !v;
+    if (v) { renderNsSheet(); $('nsPanel').querySelector<HTMLElement>('[aria-pressed="true"]')?.focus(); } else $('nsBtn').focus();
+  });
+  // the sheet handle: tap to step up (peek → half → full → peek), swipe up or down to move a step
+  let y0 = 0, moved = false;
+  const ex = $('explain');
+  ex.addEventListener('pointerdown', (e) => {
+    if (!(e.target as HTMLElement).closest('[data-sheet-toggle]')) return;
+    y0 = e.clientY;
+    moved = false;
+  });
+  ex.addEventListener('pointerup', (e) => {
+    if (!(e.target as HTMLElement).closest('[data-sheet-toggle]')) return;
+    const dy = e.clientY - y0;
+    const k = SHEETS.indexOf((document.body.dataset.sheet as SheetState) || 'peek');
+    if (Math.abs(dy) > 30) { moved = true; setSheet(SHEETS[Math.max(0, Math.min(2, k + (dy < 0 ? 1 : -1)))]); }
+  });
+  ex.addEventListener('click', (e) => {
+    if (!(e.target as HTMLElement).closest('[data-sheet-toggle]') || moved) return;
+    const k = SHEETS.indexOf((document.body.dataset.sheet as SheetState) || 'peek');
+    setSheet(SHEETS[(k + 1) % 3]);
+  });
 }
 
 function bindUi(): void {
@@ -411,6 +466,7 @@ function bindUi(): void {
   $('quality').querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.q === state.quality)));
   $('motionBtn').onclick = () => set({ reduceMotion: !state.reduceMotion });
   $('helpBtn').onclick = () => emit('help', true);
+  bindMobile();
   $('help').addEventListener('click', (e) => { if (e.target === $('help')) emit('help', false); });
   $('skipLink').onclick = (e) => { e.preventDefault(); set({ tab: 'library' }); };
   const live = $('live');
@@ -425,6 +481,8 @@ function bindUi(): void {
     if (e.key === '/' && !typing) { e.preventDefault(); $('q').focus(); return; }
     if (e.key === 'Escape' && !typing) {
       if (!$('help').hidden) return emit('help', false);
+      if (!$('nsSheet').hidden) return emit('ns-sheet', false);
+      if (document.body.classList.contains('searching')) { document.body.classList.remove('searching'); $('searchBtn').setAttribute('aria-expanded', 'false'); return; }
       if (isReaderOpen()) return closeReader();
       if (state.tab !== 'world') return set({ tab: 'world' });
       if (state.journey) return stopJourney();

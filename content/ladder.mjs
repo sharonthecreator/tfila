@@ -15,7 +15,7 @@ import { R } from './catalog.mjs';
 export const WORLDS = [
   {
     id: 'asiyah', he: 'עשיה', en: 'Asiyah', color: '#ffb547',
-    ari: 'מתחילת התפילה עד ״ברוך שאמר״ — ברכות השחר וסדר הקרבנות.',
+    ari: 'מתחילת התפילה עד ״ברוך שאמר״ — י״ח הברכות מ״על נטילת ידיים״ עד ברכות התורה, סדר הקרבנות, ו״הודו״ (בסדר הספרדים, שאומרים אותו לפני ״ברוך שאמר״).',
     rule: 'מעשים והכנות: נטילה, טלית ותפילין, נרות, ברכות הנהנין, מצוות שבמעשה, וגם ה״ירידה״ — וידוי, תחנון וסליחות.',
   },
   {
@@ -25,12 +25,12 @@ export const WORLDS = [
   },
   {
     id: 'beriah', he: 'בריאה', en: 'Beriah', color: '#7fb2ff',
-    ari: 'מ״יוצר אור״ עד סוף ברכת אבות — קריאת שמע וברכותיה.',
+    ari: 'מ״יוצר אור״ עד סוף ברכת אבות — ברכות קריאת שמע, קריאת שמע, ו״ה׳ שפתי תפתח״ עם ברכת אבות (״ראש הבריאה״).',
     rule: 'הכרזה ולימוד: קריאת שמע, קדיש, קריאה בתורה ובמגילה, קידוש, ברכת המזון, כל נדרי ותקיעת שופר.',
   },
   {
     id: 'atzilut', he: 'אצילות', en: 'Atzilut', color: '#e9d8ff',
-    ari: 'שאר העמידה.',
+    ari: 'שאר העמידה, מ״אתה גבור״ ועד סופה — ״ושאר כל העמידה כולה היא באצילות״.',
     rule: 'עמידה לפני המלך: כל העמידות ותוספותיהן, מוסף, נעילה, סדר העבודה, ברכת כהנים ושבע ברכות.',
   },
 ];
@@ -47,19 +47,30 @@ export const SECTOR_ORDER = ['seuda', 'chaim', 'boker', 'shacharit', 'erev', 'sh
 
 const A = 'asiyah', Y = 'yetzirah', B = 'beriah', Z = 'atzilut';
 
-// Nodes placed by the Ari's division of Shacharit (the rest are structural).
+// Nodes placed by an explicit statement in Sha'ar HaKavanot (the rest are structural). Every one outside the
+// division of Shacharit itself carries its own note with the source.
 // Where the Ari's reason is not the four-world division itself
 export const ARI_NOTE = {
-  tachanun: 'בנפילת אפיים ״בעמידה הוא עומד באצילות ומפיל עצמו עד העשיה״ (שער הכוונות, דרושי נפילת אפים, בשם קונטריס אדם א׳).',
+  tachanun: 'אחרי העמידה, שבה המתפלל עומד בעולם האצילות, בנפילת אפיים ״אנו מפילים עצמנו מלמעלה מן עולם האצילות… ויורדין עד למטה בסוף עולם העשייה״ — כדי לברר משם ולעלות חזרה (שער הכוונות, דרושי נפילת אפים ב; וכן בשם קונטריס אדם א׳: ״בעמידה הוא עומד באצילות ומפיל עצמו עד העשיה״).',
+  amidah: '״ושאר כל העמידה כולה היא באצילות״; רק ברכת אבות (מ״ה׳ שפתי תפתח״ עד ״מגן אברהם״) היא ״ראש הבריאה״ (שער הכוונות, דרושי תפילת השחר א). וכן במנחה: ״עיקרה היא העמידה אשר היא בעולם האצילות״ (דרושי תפילת ערבית א).',
+  ashrei: 'אחרי העמידה העולמות יורדים חזרה: ״ומן אשרי יושבי עד תפלה לדוד חוזר להיות עולם הבריאה״ (שער הכוונות, דרושי תפילת השחר א); ״מן אשרי עד סיום קדושת ובא לציון… כל הסדר הזה הוא בעולם הבריאה״ (דרושי אשרי ופטום הקטורת ועלינו).',
+  'kaddish-yatom': '״קדיש יתמא… הקדיש הזה הוא בעולם העשיה ששם בחינת המיתה, כדי להעלות כל הנשמות והנפשות בסוד תחיית המתים״ (שער הכוונות, דרושי הקדיש). מקומו בעשיה כדי להעלות משם את נשמות הנפטרים.',
+  kaveh: 'בסוף התפילה: ״ואח״כ העשיה היא פטום הקטרת והרי נשלמה התפלה״ (שער הכוונות, דרושי הקדיש); ״כבר נת״ל שהסדר הזה הוא בעשיה״ (דרושי אשרי ופטום הקטורת ועלינו).',
+  'arvit-shema': '״תפלת ערבית היא דינא רפיא, ולכן אנו אומרים פה יחוד ק״ש עם ברכותיה אשר ה״ס היכלי עולם הבריאה״ (שער הכוונות, דרושי תפילת ערבית א).',
+  'arvit-shabbat': '״ברכות דיוצר דערבית דשבת כולם הם בהיכלות הבריאה… ואח״ך העמידה דתפילת ערבית היא בעולם האצילות״ (שער הכוונות, דרושי תוספת שבת).',
+  'mincha-shabbat': 'מנחה של שבת היא ״תכלית כל העליות״: בה כל העולמות עולים — הבריאה, היצירה והעשיה מתעלים אל תוך האצילות (שער הכוונות, דרושי קידוש ליל שבת).',
 };
 
-export const ARI = new Set(['birchot-hashachar', 'birchot-hatorah', 'akeda-korbanot', 'adon-olam', 'pesukei-dezimra', 'shema', 'amidah', 'tachanun']);
+export const ARI = new Set([
+  'birchot-hashachar', 'birchot-hatorah', 'akeda-korbanot', 'pesukei-dezimra', 'shema', 'amidah', 'tachanun',
+  'ashrei', 'kaddish-yatom', 'kaveh', 'arvit-shema', 'arvit-shabbat', 'mincha-shabbat',
+]);
 
 export const PLACEMENT = {
   // boker
   'modeh-ani': A, 'birchot-hashachar': A, 'birchot-hatorah': A, tallit: A, tefillin: A, 'akeda-korbanot': A, 'adon-olam': A,
   // shacharit
-  'pesukei-dezimra': Y, kaddish: B, shema: B, amidah: Z, tachanun: A, 'kriat-hatorah': B, ashrei: Y, 'shir-shel-yom': Y,
+  'pesukei-dezimra': Y, kaddish: B, shema: B, amidah: Z, tachanun: A, 'kriat-hatorah': B, ashrei: B, 'shir-shel-yom': Y,
   aleinu: B, kaveh: A, zechirot: B, 'birkat-kohanim': Z,
   // erev
   'mincha-opening': A, 'arvit-shema': B, 'sefirat-haomer': A, 'kiddush-levana': Y, 'kriat-shema-al-hamita': B,
@@ -92,8 +103,8 @@ export const PLACEMENT = {
   'chazara-yk': Z, 'kriat-hatorah-yk': B, hineni: A, avoda: Z, 'eleh-ezkera': Y, 'mincha-yk': B, 'el-nora-alila': Y,
   neila: Z, 'neila-closing': B, 'motzaei-yk': A,
   // taaniot & mourning
-  yizkor: B, aneinu: Z, 'selichot-taanit': A, 'arvit-tisha': A, eicha: B, kinot: Y, nachem: Z, kriah: A, 'tziduk-hadin': B,
-  'kaddish-yatom': B, 'birkat-avelim': B, hashkava: B, 'mishnayot-avel': B,
+  yizkor: B, aneinu: Z, 'selichot-taanit': A, 'arvit-tisha': B, eicha: B, kinot: Y, nachem: Z, kriah: A, 'tziduk-hadin': B,
+  'kaddish-yatom': A, 'birkat-avelim': B, hashkava: B, 'mishnayot-avel': B,
 };
 
 // Geometry of the ladder (world units): one full turn of the helix per world.

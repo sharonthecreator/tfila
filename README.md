@@ -77,8 +77,12 @@ surrounded by glass instrument panels with letter-spaced micro-labels, monospace
 * **Four worlds, one turn each.** Bottom to top: עשיה, יצירה, בריאה, אצילות. The Ari (Sha'ar HaKavanot, Sermons on
   Morning Prayers 1) divides Shacharit this way: from the start of the prayer to Baruch She'amar — Asiyah; to Yotzer Or —
   Yetzirah; to the end of the Avot blessing — Beriah; the rest of the Amidah — Atzilut; and in Nefilat Apayim "he stands
-  in Atzilut and lowers himself down to Asiyah" (Sermons on the Falling on the Face Prayer 4). Those 8 placements are
-  sourced and labelled "האר״י". **Every other placement is tfila's own structural assignment** by a stated rule of thumb
+  in Atzilut and lowers himself down to Asiyah" (Sermons on the Falling on the Face Prayer 4). These and further explicit
+  statements in Sha'ar HaKavanot place 13 prayers: the Shacharit division, Tachanun's descent, and the descent after
+  the Amidah (Ashrei/Uva LeTzion in Beriah, Pitum HaKetoret in Asiyah), Kaddish Yatom in Asiyah "to raise the
+  souls", the evening Shema in Beriah, the Shabbat evening Amidah in Atzilut and Shabbat Mincha as "the purpose of all
+  ascents". Each is labelled "האר״י" and carries its quote and section. An audit verified every one of them against the
+  cached text, and removed Adon Olam, which the Ari's text does not mention. **Every other placement is tfila's own structural assignment** by a stated rule of thumb
   (acts and preparations / praise and song / declaration and study / standing before the King) and is labelled as such
   in the app — it is a way to lay out the map, not a kabbalistic claim. The Learn page quotes the Ari's passages from
   the edition, with link.

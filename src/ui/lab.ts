@@ -39,7 +39,7 @@ function worldLine(n: PrayerNode): string {
   const w = worldById(n.world);
   return n.wsrc === 'ari'
     ? `<p><strong>בסולם:</strong> עולם ה<b style="color:${w.color}">${w.he}</b> — ${n.wnote ? `לפי האר״י: ${escapeHtml(n.wnote)}` : `לפי חלוקת האר״י לתפילת השחר (שער הכוונות): ${escapeHtml(w.ari)}`}</p>`
-    : `<p><strong>בסולם:</strong> עולם ה<b style="color:${w.color}">${w.he}</b> <span style="color:var(--faint)">— שיבוץ מבני של tfila (${escapeHtml(w.rule.split(':')[0])}), לא קביעה קבלית.</span></p>`;
+    : `<p><strong>בסולם:</strong> עולם ה<b style="color:${w.color}">${w.he}</b> <span style="color:var(--faint)">— שיבוץ מבני של tfila, לא קביעה קבלית. כלל האצבע לעולם זה: ${escapeHtml(w.rule)}</span></p>`;
 }
 
 /** one-click link to the passage at its source */
@@ -150,7 +150,7 @@ export function renderExplain(): void {
       <ul class="regions">${state.world.regions.map((r) => `<li><button data-region="${r.id}" style="color:${r.color}"><i></i><span style="color:#d8e0ec">${escapeHtml(r.name)}</span><small>${state.world.nodes.filter((n) => n.region === r.id).length}</small></button></li>`).join('')}</ul>
       <div class="hint">גררו לסיבוב ולטיפוס · <kbd>גלגלת</kbd> להתקרבות · <kbd>Enter</kbd> בחירה · <kbd>/</kbd> חיפוש · <kbd>Esc</kbd> חזרה. הנוסח הנוכחי: <b style="color:${ns.color}">${escapeHtml(ns.name)}</b>.</div>`;
   }
-  el.innerHTML = html;
+  el.innerHTML = `<button class="sheet-handle m-only" data-sheet-toggle aria-label="הרחבה או כיווץ של הלוח"><i></i></button>${html}`;
   el.querySelectorAll<HTMLElement>('[data-node]').forEach((b) => (b.onclick = () => emit('goto', b.dataset.node)));
   el.querySelectorAll<HTMLElement>('[data-stop]').forEach((b) => (b.onclick = () => emit('stop', Number(b.dataset.stop))));
   el.querySelectorAll<HTMLElement>('[data-route]').forEach((b) => (b.onclick = () => emit('route', b.dataset.route)));
@@ -314,7 +314,13 @@ export function renderDock(): void {
         <div class="ticks">${secs.filter((_, k) => secs.length <= 7 || k % 2 === 0).map((x) => `<span style="right:${pct(x.start, n)}%">${escapeHtml(x.name.split(' ').slice(0, 2).join(' '))}</span>`).join('')}</div>
       </div>
       <div class="quick">${secs.map((x) => `<button class="btn" data-stop="${x.start}" aria-pressed="${state.stopIndex >= x.start && state.stopIndex <= x.end}" style="color:${x.color}"><span class="sw"></span><span style="color:#d9e1ed">${escapeHtml(x.name)}</span></button>`).join('')}</div>
-      <div class="pace"><span class="lbl" id="paceLbl">קצב המסע</span>
+      <div class="m-transport m-only" role="group" aria-label="ניווט במסלול">
+        <button class="btn" data-stop="${Math.max(0, state.stopIndex - 1)}" ${state.stopIndex <= 0 ? 'disabled' : ''} aria-label="התחנה הקודמת"><span aria-hidden="true">→</span> הקודמת</button>
+        <button class="btn primary" data-act="journey" aria-pressed="${state.journey}" aria-label="${state.journey ? 'עצירת המסע המודרך' : 'מסע מודרך'}">${state.journey ? '❚❚' : '▶'}</button>
+        <button class="btn" data-speed-cycle aria-label="קצב המסע: ${SPEEDS.find((x) => x.v === state.speed)?.he || ''}">${state.speed}×</button>
+        <button class="btn" data-stop="${Math.min(n - 1, state.stopIndex + 1)}" ${state.stopIndex >= n - 1 ? 'disabled' : ''} aria-label="התחנה הבאה">הבאה <span aria-hidden="true">←</span></button>
+      </div>
+      <div class="pace d-only"><span class="lbl" id="paceLbl">קצב המסע</span>
         <div class="seg" role="radiogroup" aria-labelledby="paceLbl">${SPEEDS.map((x) => `<button role="radio" data-speed="${x.v}" aria-checked="${x.v === state.speed}" aria-pressed="${x.v === state.speed}" title="${x.he} — ${x.v}×  (מקשים [ ו־])">${x.he}</button>`).join('')}</div>
         <button class="btn journey-btn" data-act="journey" aria-pressed="${state.journey}">${state.journey ? '❚❚ עצירת המסע' : '▶ מסע מודרך'}</button>
       </div>
@@ -346,8 +352,27 @@ export function renderDock(): void {
   el.querySelectorAll<HTMLElement>('[data-ns]').forEach((b) => (b.onclick = () => emit('nusach', b.dataset.ns)));
   el.querySelectorAll<HTMLElement>('[data-rel]').forEach((b) => (b.onclick = () => emit('relview', b.dataset.rel === '1')));
   el.querySelectorAll<HTMLElement>('[data-speed]').forEach((b) => (b.onclick = () => emit('speed', Number(b.dataset.speed))));
+  el.querySelector<HTMLElement>('[data-speed-cycle]')?.addEventListener('click', () => {
+    const k = SPEEDS.findIndex((x) => x.v === state.speed);
+    emit('speed', SPEEDS[(k + 1) % SPEEDS.length].v);
+  });
+  const nb = document.getElementById('nsBtnLabel');
+  if (nb) { nb.textContent = ns.short; nb.parentElement!.setAttribute('aria-label', `נוסח: ${ns.name} — החלפה`); nb.parentElement!.style.color = ns.color; }
   el.querySelectorAll<HTMLElement>('[data-act]').forEach((b) => (b.onclick = () => emit(b.dataset.act!)));
   document.documentElement.style.setProperty('--dock-h', el.offsetHeight + 'px');
+}
+
+/** The nusach picker for phones: the same tiles as the dock, as a sheet. */
+export function renderNsSheet(): void {
+  const el = $('nsPanel');
+  el.innerHTML = `<div class="sheet-top"><span class="eyebrow">נוסח</span><button class="icon-btn" data-close aria-label="סגירה">✕</button></div>
+    <h2 id="nsTitle">באיזה נוסח להציג?</h2>
+    <div class="ns-list">${state.world.nusachim.map((x) => {
+      const frac = coverage(x.id) / state.world.nodes.length;
+      return `<button class="btn" data-ns="${x.id}" aria-pressed="${x.id === state.nusach}">${coverageGlyph(frac, x.color, x.short[0])}<span><b>${escapeHtml(x.name)}</b><small>${coverage(x.id)}/${state.world.nodes.length} עם טקסט</small></span></button>`;
+    }).join('')}</div>`;
+  el.querySelectorAll<HTMLElement>('[data-ns]').forEach((b) => (b.onclick = () => { emit('nusach', b.dataset.ns); emit('ns-sheet', false); }));
+  el.querySelector<HTMLElement>('[data-close]')!.onclick = () => emit('ns-sheet', false);
 }
 
 // ───────────────────────────── LIVE inset ─────────────────────────────

@@ -50,6 +50,10 @@
         </nav>
 
         <div class="top-actions">
+          <button class="icon-btn m-only" id="searchBtn" aria-label="חיפוש" aria-expanded="false" aria-controls="q">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M20 20l-4.6-4.6"/></svg>
+          </button>
+          <button class="icon-btn m-only ns-btn" id="nsBtn" aria-haspopup="dialog" aria-controls="nsSheet"><span id="nsBtnLabel">ע״מ</span></button>
           <div class="search" role="search">
             <label for="q" class="sr-only">חיפוש תפילה או מילים</label>
             <input id="q" type="search" autocomplete="off" spellcheck="false" placeholder="חיפוש — עם ניקוד או בלעדיו" aria-controls="results" aria-expanded="false" />
@@ -71,6 +75,14 @@
           <button class="icon-btn" id="helpBtn" title="עזרה וקיצורי מקלדת">?</button>
         </div>
       </header>
+
+      <!-- phones: the views as a bottom tab bar -->
+      <nav class="mnav" id="mnav" aria-label="תצוגות">
+        <button data-tab="world" aria-selected="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M8 21c-3-4 9-6 6-10S6 7 9 3M14 21c-3-4 9-6 6-10S12 7 15 3"/><path d="M9 17h6M10 12.5h6M9 7h6"/></svg><span>סולם</span></button>
+        <button data-tab="library" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M4 5.5C4 4.7 4.7 4 5.5 4H11v16H5.5A1.5 1.5 0 0 1 4 18.5zM20 5.5c0-.8-.7-1.5-1.5-1.5H13v16h5.5c.8 0 1.5-.7 1.5-1.5z"/></svg><span>ספרייה</span></button>
+        <button data-tab="compare" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="3.5" y="4" width="7" height="16" rx="1.5"/><rect x="13.5" y="4" width="7" height="16" rx="1.5"/></svg><span>השוואה</span></button>
+        <button data-tab="learn" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2V16h5v-.1c0-.8.4-1.5 1-2A6 6 0 0 0 12 3z"/></svg><span>למדו</span></button>
+      </nav>
 
       <nav class="crumbs chip" id="crumbs" aria-label="מיקום וחזרה" hidden></nav>
       <section class="panel explain" id="explain" aria-live="polite"></section>
@@ -95,6 +107,7 @@
     <main class="view" id="compareView" tabindex="-1" hidden aria-label="השוואת נוסחים"></main>
     <main class="view" id="learnView" tabindex="-1" hidden aria-label="למדו"></main>
 
+    <div class="modal" id="nsSheet" hidden><div class="panel ns-sheet" role="dialog" aria-modal="true" aria-labelledby="nsTitle" id="nsPanel"></div></div>
     <div class="modal" id="help" hidden><div class="panel help" role="dialog" aria-modal="true" aria-labelledby="helpTitle" id="helpPanel"></div></div>
     <div id="sr" class="sr-only" aria-live="polite"></div>
 

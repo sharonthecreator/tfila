@@ -89,6 +89,9 @@ for (const n of NODES) {
   if (!PLACEMENT[n.id]) errors.push(`ladder: node ${n.id} has no world placement`);
 }
 for (const id of Object.keys(PLACEMENT)) if (!nodeById.has(id)) errors.push(`ladder: placement for unknown node ${id}`);
+// a node credited to the Ari outside his division of Shacharit must carry its own source
+const SHACHARIT_DIVISION = new Set(['birchot-hashachar', 'birchot-hatorah', 'akeda-korbanot', 'pesukei-dezimra', 'shema']);
+for (const id of ARI) if (!SHACHARIT_DIVISION.has(id) && !ARI_NOTE[id]) errors.push(`ladder: ${id} is credited to the Ari without a sourced note`);
 for (const region of REGIONS) if (!SECTOR_ORDER.includes(region.id)) errors.push(`ladder: region ${region.id} has no sector`);
 for (const [s, regionId] of SECTOR_ORDER.entries()) {
   for (const [w, worldId] of WORLD_IDS.entries()) {
